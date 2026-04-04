@@ -151,10 +151,8 @@ export class SessionManager {
 
     const { stream, push, close } = createMessageStream();
 
-    // Only send initial prompt if explicitly provided
-    if (options?.prompt) {
-      push(makeUserMessage(options.prompt));
-    }
+    // Send initial prompt — SDK requires at least one message to initialize
+    push(makeUserMessage(options?.prompt ?? "ready"));
 
     const queryOptions: Options = {
       ...this.defaultOptions,
