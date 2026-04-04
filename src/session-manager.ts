@@ -151,7 +151,8 @@ export class SessionManager {
     const { stream, push, close } = createMessageStream();
 
     // Send initial prompt — required to initialize the session
-    push(makeUserMessage(options?.prompt ?? "Server is up and ready. Reply OK if you understand."));
+    const now = new Date().toLocaleString("sv-SE", { timeZone: "America/Chicago", hour12: false });
+    push(makeUserMessage(options?.prompt ?? `Server is up and ready. Current time: ${now} CT. Reply OK if you understand.`));
 
     const queryOptions: Options = {
       ...this.defaultOptions,
