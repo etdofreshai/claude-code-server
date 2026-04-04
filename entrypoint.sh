@@ -16,11 +16,11 @@ cleanup() {
 trap cleanup SIGTERM SIGINT
 
 while true; do
-    echo "$(date -Iseconds) Starting Claude Code remote-control..."
+    echo "$(date -Iseconds) Starting Claude Code..."
 
     # Use script to allocate a pseudo-TTY for interactive mode
     # shellcheck disable=SC2086
-    script -qec "claude remote-control $CLAUDE_CODE_ARGS" /dev/null || true
+    script -qec "claude $CLAUDE_CODE_ARGS" /dev/null || true
     EXIT_CODE=$?
 
     echo "$(date -Iseconds) Claude Code exited with code $EXIT_CODE"
