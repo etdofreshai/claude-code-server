@@ -1,6 +1,6 @@
 FROM node:22-slim
 
-# Install dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -11,24 +11,30 @@ RUN apt-get update && apt-get install -y \
 # Install Claude Code globally
 RUN npm install -g @anthropic-ai/claude-code
 
-# Copy the supervisor script (before USER switch so we can chmod)
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
-
-# Create non-root user (claude can't use --dangerously-skip-permissions as root)
+# Create non-root user
 RUN useradd -m -s /bin/bash claude
 
-# Create workspace directory
+# Copy app source and build
+WORKDIR /app
+COPY package.json tsconfig.json ./
+RUN npm install
+COPY src/ src/
+RUN npm run build
+
+# Set ownership and workspace
 RUN mkdir -p /home/claude/workspace && chown claude:claude /home/claude/workspace
+RUN chown -R claude:claude /app
 
 USER claude
 RUN git config --global user.name "ETdoFresh" && git config --global user.email "etdofresh@gmail.com"
 WORKDIR /home/claude/workspace
 
-# Environment variables (override at runtime)
-ENV CLAUDE_CODE_ARGS="--dangerously-skip-permissions --remote-control"
-ENV RESTART_DELAY="3"
+# Environment variables
+ENV PORT="3000"
+ENV WORKSPACE_DIR="/home/claude/workspace"
 ENV GH_TOKEN_ETDOFRESH=""
 ENV GH_TOKEN_ETDOFRESHAI=""
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+EXPOSE 3000
+
+CMD ["node", "/app/dist/server.js"]
