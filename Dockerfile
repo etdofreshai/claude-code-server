@@ -18,14 +18,9 @@ RUN useradd -m -s /bin/bash claude
 WORKDIR /app
 COPY package.json tsconfig.json ./
 RUN npm install
-COPY .git/ .git/
 COPY src/ src/
-RUN BUILD_SHA=$(git rev-parse HEAD 2>/dev/null || echo "unknown") && \
-    BUILD_DATETIME=$(date -Iseconds) && \
-    echo "BUILD_SHA=$BUILD_SHA" > .build-env && \
-    echo "BUILD_DATETIME=$BUILD_DATETIME" >> .build-env && \
-    npm run build && \
-    rm -rf .git
+RUN echo "BUILD_DATETIME=$(date -Iseconds)" > .build-env && \
+    npm run build
 ENV BUILD_SHA=""
 ENV BUILD_DATETIME=""
 
