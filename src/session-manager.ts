@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { query, type Query, type SDKMessage, type Options } from "@anthropic-ai/claude-agent-sdk";
+import { query, type Query, type SDKMessage, type SDKUserMessage, type Options } from "@anthropic-ai/claude-agent-sdk";
 
 interface PersistedSession {
   id: string;
@@ -17,6 +17,53 @@ export interface SessionInfo {
   createdAt: Date;
   messages: SDKMessage[];
   isHub: boolean;
+  sendMessage: (text: string) => void;
+}
+
+/**
+ * Creates an async iterable that stays open until explicitly closed.
+ * Push messages into it with push(), close it with close().
+ */
+function createMessageStream() {
+  const queue: SDKUserMessage[] = [];
+  let resolve: (() => void) | null = null;
+  let closed = false;
+
+  const stream: AsyncIterable<SDKUserMessage> = {
+    [Symbol.asyncIterator]() {
+      return {
+        async next(): Promise<IteratorResult<SDKUserMessage>> {
+          while (queue.length === 0) {
+            if (closed) return { done: true, value: undefined };
+            await new Promise<void>((r) => { resolve = r; });
+            resolve = null;
+          }
+          return { done: false, value: queue.shift()! };
+        },
+      };
+    },
+  };
+
+  return {
+    stream,
+    push(msg: SDKUserMessage) {
+      queue.push(msg);
+      resolve?.();
+    },
+    close() {
+      closed = true;
+      resolve?.();
+    },
+  };
+}
+
+function makeUserMessage(text: string): SDKUserMessage {
+  return {
+    type: "user",
+    message: { role: "user", content: text },
+    parent_tool_use_id: null,
+    timestamp: new Date().toISOString(),
+  };
 }
 
 export class SessionManager {
@@ -101,7 +148,12 @@ export class SessionManager {
     isHub?: boolean;
   }): Promise<SessionInfo> {
     const name = options?.name ?? `session-${Date.now()}`;
-    const prompt = options?.prompt ?? "You are ready. Await instructions.";
+    const initialPrompt = options?.prompt ?? "You are ready. Await instructions.";
+
+    const { stream, push, close } = createMessageStream();
+
+    // Send the initial prompt as the first message
+    push(makeUserMessage(initialPrompt));
 
     const queryOptions: Options = {
       ...this.defaultOptions,
@@ -117,7 +169,7 @@ export class SessionManager {
       ...(options?.sessionId ? { sessionId: options.sessionId } : {}),
     };
 
-    const q = query({ prompt, options: queryOptions });
+    const q = query({ prompt: stream, options: queryOptions });
     const messages: SDKMessage[] = [];
 
     const session: SessionInfo = {
@@ -128,7 +180,11 @@ export class SessionManager {
       createdAt: new Date(),
       messages,
       isHub: options?.isHub ?? false,
+      sendMessage: (text: string) => push(makeUserMessage(text)),
     };
+
+    // Store close fn for cleanup
+    (session as any)._closeStream = close;
 
     // Start consuming messages in background
     this.consumeMessages(session);
@@ -219,6 +275,7 @@ export class SessionManager {
     if (!session) {
       throw new Error(`Session ${sessionId} not found`);
     }
+    (session as any)._closeStream?.();
     session.query.close();
     session.status = "ended";
     this.sessions.delete(sessionId);
@@ -229,6 +286,7 @@ export class SessionManager {
     const ended: string[] = [];
     for (const session of this.getActiveSessions()) {
       if (session.isHub) continue;
+      (session as any)._closeStream?.();
       session.query.close();
       session.status = "ended";
       this.sessions.delete(session.id);
@@ -244,6 +302,7 @@ export class SessionManager {
       throw new Error(`Session ${sessionId} not found`);
     }
     const { name, isHub } = session;
+    (session as any)._closeStream?.();
     session.query.close();
     session.status = "ended";
     this.sessions.delete(sessionId);
