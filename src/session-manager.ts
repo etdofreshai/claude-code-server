@@ -151,7 +151,7 @@ export class SessionManager {
     const { stream, push, close } = createMessageStream();
 
     // Send initial prompt — required to initialize the session
-    push(makeUserMessage(options?.prompt ?? "ready"));
+    push(makeUserMessage(options?.prompt ?? "Server is up and ready. Reply OK if you understand."));
 
     const queryOptions: Options = {
       ...this.defaultOptions,
