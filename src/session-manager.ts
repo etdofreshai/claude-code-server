@@ -161,6 +161,10 @@ export class SessionManager {
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       settingSources: ["user", "project", "local"],
+      extraArgs: {
+        name: name,
+        ...this.defaultOptions.extraArgs,
+      },
       ...(options?.resume ? { resume: options.resume } : {}),
       ...(options?.sessionId ? { sessionId: options.sessionId } : {}),
     };
@@ -194,6 +198,7 @@ export class SessionManager {
     // Set session display name
     try {
       await renameSession(session.id, name, { dir: this.cwd });
+      console.log(`Session ${session.id}: renamed to "${name}"`);
     } catch (err) {
       console.error(`Session ${session.id}: failed to rename:`, err);
     }
