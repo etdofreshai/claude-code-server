@@ -109,6 +109,10 @@ export class SessionManager {
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       settingSources: ["user", "project", "local"],
+      extraArgs: {
+        "remote-control": null,
+        ...this.defaultOptions.extraArgs,
+      },
       ...(options?.resume ? { resume: options.resume } : {}),
       ...(options?.sessionId ? { sessionId: options.sessionId } : {}),
     };
