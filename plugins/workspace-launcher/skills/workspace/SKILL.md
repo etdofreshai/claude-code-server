@@ -31,7 +31,7 @@ Inspect `<command-args>`:
 ```bash
 curl -sf -X POST http://localhost:3000/api/sessions/<SESSION_ID>/resume \
   -H "Content-Type: application/json" \
-  -d '{"name": "<WORKSPACE_NAME>", "prompt": "You are ready. Await instructions."}'
+  -d '{"name": "<WORKSPACE_NAME>"}'
 ```
 
 **If `SESSION_ID` is NOT provided** (new session):
@@ -39,7 +39,7 @@ curl -sf -X POST http://localhost:3000/api/sessions/<SESSION_ID>/resume \
 ```bash
 curl -sf -X POST http://localhost:3000/api/sessions/new \
   -H "Content-Type: application/json" \
-  -d '{"name": "<WORKSPACE_NAME>", "prompt": "You are ready. Await instructions."}'
+  -d '{"name": "<WORKSPACE_NAME>"}'
 ```
 
 Parse the JSON response to get `id`, `name`, and `status`.

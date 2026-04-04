@@ -130,7 +130,6 @@ export class SessionManager {
   async startHub(name: string = "Hub"): Promise<SessionInfo> {
     const session = await this.createSession({
       name,
-      prompt: "You are the hub session for claude-code-server. You are always running. Await instructions.",
       isHub: true,
     });
     this.hubSession = session;
@@ -149,12 +148,13 @@ export class SessionManager {
     isHub?: boolean;
   }): Promise<SessionInfo> {
     const name = options?.name ?? `session-${Date.now()}`;
-    const initialPrompt = options?.prompt ?? "You are ready. Await instructions.";
 
     const { stream, push, close } = createMessageStream();
 
-    // Send the initial prompt as the first message
-    push(makeUserMessage(initialPrompt));
+    // Only send initial prompt if explicitly provided
+    if (options?.prompt) {
+      push(makeUserMessage(options.prompt));
+    }
 
     const queryOptions: Options = {
       ...this.defaultOptions,
