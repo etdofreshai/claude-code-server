@@ -240,11 +240,13 @@ app.listen(PORT, async () => {
   console.log(`claude-code-server listening on :${PORT}`);
   console.log(`Workspace: ${WORKSPACE_DIR}`);
 
+  // Resolve hub name with current datetime
+  const hubName = HUB_NAME_TEMPLATE.replace("${DATETIME}", new Date().toLocaleString("sv-SE", { timeZone: "America/Chicago", hour12: false }).replace(/[-: ]/g, (m) => m === " " ? "T" : ""));
+
   // Restore previous sessions, or start a fresh hub
   try {
-    await manager.restore();
+    await manager.restore(hubName);
     if (!manager.getHub()) {
-      const hubName = HUB_NAME_TEMPLATE.replace("${DATETIME}", new Date().toLocaleString("sv-SE", { timeZone: "America/Chicago", hour12: false }).replace(/[-: ]/g, (m) => m === " " ? "T" : ""));
       const hub = await manager.startHub(hubName);
       console.log(`Hub session started: ${hub.id}`);
     } else {

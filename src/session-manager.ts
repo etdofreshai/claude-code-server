@@ -104,15 +104,16 @@ export class SessionManager {
     }
   }
 
-  async restore(): Promise<void> {
+  async restore(hubName?: string): Promise<void> {
     const saved = this.loadState();
     if (saved.length === 0) return;
 
     console.log(`Restoring ${saved.length} session(s)...`);
     for (const entry of saved) {
       try {
+        const name = entry.isHub && hubName ? hubName : entry.name;
         const session = await this.createSession({
-          name: entry.name,
+          name,
           resume: entry.id,
           isHub: entry.isHub,
         });
