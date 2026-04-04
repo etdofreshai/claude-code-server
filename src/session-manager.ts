@@ -1,6 +1,13 @@
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { query, renameSession, type Query, type SDKMessage, type SDKUserMessage, type Options } from "@anthropic-ai/claude-agent-sdk";
+import {
+  unstable_v2_createSession,
+  unstable_v2_resumeSession,
+  renameSession,
+  type SDKSession,
+  type SDKMessage,
+  type SDKSessionOptions,
+} from "@anthropic-ai/claude-agent-sdk";
 
 interface PersistedSession {
   id: string;
@@ -12,71 +19,30 @@ interface PersistedSession {
 export interface SessionInfo {
   id: string;
   name: string;
-  query: Query;
+  session: SDKSession;
   status: "starting" | "running" | "ended";
   createdAt: Date;
   messages: SDKMessage[];
   isHub: boolean;
-  sendMessage: (text: string) => void;
-}
-
-/**
- * Creates an async iterable that stays open until explicitly closed.
- * Push messages into it with push(), close it with close().
- */
-function createMessageStream() {
-  const queue: SDKUserMessage[] = [];
-  let resolve: (() => void) | null = null;
-  let closed = false;
-
-  const stream: AsyncIterable<SDKUserMessage> = {
-    [Symbol.asyncIterator]() {
-      return {
-        async next(): Promise<IteratorResult<SDKUserMessage>> {
-          while (queue.length === 0) {
-            if (closed) return { done: true, value: undefined };
-            await new Promise<void>((r) => { resolve = r; });
-            resolve = null;
-          }
-          return { done: false, value: queue.shift()! };
-        },
-      };
-    },
-  };
-
-  return {
-    stream,
-    push(msg: SDKUserMessage) {
-      queue.push(msg);
-      resolve?.();
-    },
-    close() {
-      closed = true;
-      resolve?.();
-    },
-  };
-}
-
-function makeUserMessage(text: string): SDKUserMessage {
-  return {
-    type: "user",
-    message: { role: "user", content: text },
-    parent_tool_use_id: null,
-    timestamp: new Date().toISOString(),
-  };
+  sendMessage: (text: string) => Promise<void>;
 }
 
 export class SessionManager {
   private sessions = new Map<string, SessionInfo>();
   private cwd: string;
-  private defaultOptions: Partial<Options>;
   private stateFile: string;
   private hubSession: SessionInfo | null = null;
 
-  constructor(cwd: string, defaultOptions: Partial<Options> = {}) {
+  constructor(cwd: string) {
     this.cwd = cwd;
-    this.defaultOptions = defaultOptions;
     this.stateFile = join(cwd, ".claude-code-server-sessions.json");
+  }
+
+  private getSessionOptions(): SDKSessionOptions {
+    return {
+      model: "sonnet",
+      permissionMode: "bypassPermissions",
+    };
   }
 
   private saveState(): void {
@@ -120,7 +86,7 @@ export class SessionManager {
         if (entry.isHub) {
           this.hubSession = session;
         }
-        console.log(`Restored session: ${session.id} (${entry.name})`);
+        console.log(`Restored session: ${session.id} (${name})`);
       } catch (err) {
         console.error(`Failed to restore session ${entry.id}:`, err);
       }
@@ -143,84 +109,83 @@ export class SessionManager {
   async createSession(options?: {
     name?: string;
     resume?: string;
-    sessionId?: string;
     prompt?: string;
     isHub?: boolean;
   }): Promise<SessionInfo> {
     const name = options?.name ?? `session-${Date.now()}`;
+    const sessionOptions = this.getSessionOptions();
 
-    const { stream, push, close } = createMessageStream();
+    // Create or resume the v2 session
+    const sdkSession = options?.resume
+      ? unstable_v2_resumeSession(options.resume, sessionOptions)
+      : unstable_v2_createSession(sessionOptions);
 
-    // Only send initial prompt if explicitly provided — session idles otherwise
-    if (options?.prompt) {
-      push(makeUserMessage(options.prompt));
-    }
-
-    const queryOptions: Options = {
-      ...this.defaultOptions,
-      cwd: this.cwd,
-      permissionMode: "bypassPermissions",
-      allowDangerouslySkipPermissions: true,
-      settingSources: ["user", "project", "local"],
-      extraArgs: {
-        name: name,
-        ...this.defaultOptions.extraArgs,
-      },
-      ...(options?.resume ? { resume: options.resume } : {}),
-      ...(options?.sessionId ? { sessionId: options.sessionId } : {}),
-    };
-
-    const q = query({ prompt: stream, options: queryOptions });
     const messages: SDKMessage[] = [];
 
-    const session: SessionInfo = {
-      id: "", // filled on init message
+    const info: SessionInfo = {
+      id: "", // filled on first message or immediately for resumed sessions
       name,
-      query: q,
+      session: sdkSession,
       status: "starting",
       createdAt: new Date(),
       messages,
       isHub: options?.isHub ?? false,
-      sendMessage: (text: string) => push(makeUserMessage(text)),
+      sendMessage: async (text: string) => {
+        await sdkSession.send(text);
+      },
     };
 
-    // Store close fn for cleanup
-    (session as any)._closeStream = close;
+    // Start consuming the message stream in background
+    this.consumeMessages(info);
 
-    // Start consuming messages in background
-    this.consumeMessages(session);
+    // For resumed sessions, sessionId is available immediately
+    if (options?.resume) {
+      try {
+        info.id = sdkSession.sessionId;
+        info.status = "running";
+      } catch {
+        // sessionId not yet available, wait for init
+        await this.waitForInit(info);
+      }
+    } else {
+      // Send initial prompt if provided, to trigger init and get sessionId
+      if (options?.prompt) {
+        await sdkSession.send(options.prompt);
+      }
+      await this.waitForInit(info);
+    }
 
-    // Wait for init to get session ID
-    await this.waitForInit(session);
-
-    this.sessions.set(session.id, session);
+    this.sessions.set(info.id, info);
     this.saveState();
 
     // Set session display name
     try {
-      await renameSession(session.id, name, { dir: this.cwd });
-      console.log(`Session ${session.id}: renamed to "${name}"`);
+      await renameSession(info.id, name, { dir: this.cwd });
+      console.log(`Session ${info.id}: renamed to "${name}"`);
     } catch (err) {
-      console.error(`Session ${session.id}: failed to rename:`, err);
+      console.error(`Session ${info.id}: failed to rename:`, err);
     }
 
     // Enable remote control so session is accessible from claude.ai/code
     try {
-      await (q as any).enableRemoteControl(true);
-      console.log(`Session ${session.id}: remote control enabled`);
+      await (sdkSession as any).enableRemoteControl?.(true);
+      console.log(`Session ${info.id}: remote control enabled`);
     } catch (err) {
-      console.error(`Session ${session.id}: failed to enable remote control:`, err);
+      console.error(`Session ${info.id}: failed to enable remote control:`, err);
     }
 
-    console.log(`Session created: ${session.id} (${name})`);
-    return session;
+    console.log(`Session created: ${info.id} (${name})`);
+    return info;
   }
 
-  private async waitForInit(session: SessionInfo): Promise<void> {
-    return new Promise((resolve) => {
+  private async waitForInit(session: SessionInfo, timeoutMs: number = 30000): Promise<void> {
+    const start = Date.now();
+    return new Promise((resolve, reject) => {
       const check = () => {
         if (session.id !== "") {
           resolve();
+        } else if (Date.now() - start > timeoutMs) {
+          reject(new Error(`Session init timed out after ${timeoutMs}ms`));
         } else {
           setTimeout(check, 50);
         }
@@ -231,11 +196,17 @@ export class SessionManager {
 
   private async consumeMessages(session: SessionInfo): Promise<void> {
     try {
-      for await (const message of session.query) {
+      for await (const message of session.session.stream()) {
         session.messages.push(message);
 
         if (message.type === "system" && message.subtype === "init") {
           session.id = (message as any).session_id ?? session.id;
+          session.status = "running";
+        }
+
+        // Also try to pick up sessionId from session_state_changed
+        if (message.type === "system" && (message as any).session_id && session.id === "") {
+          session.id = (message as any).session_id;
           session.status = "running";
         }
 
@@ -273,14 +244,14 @@ export class SessionManager {
     if (!session || session.status !== "running") {
       throw new Error(`Session ${sessionId} not found or not running`);
     }
-    return session.query.reloadPlugins();
+    return (session.session as any).reloadPlugins?.();
   }
 
   async reloadAllPlugins(): Promise<Record<string, any>> {
     const results: Record<string, any> = {};
     for (const session of this.getActiveSessions()) {
       try {
-        results[session.id] = await session.query.reloadPlugins();
+        results[session.id] = await (session.session as any).reloadPlugins?.();
       } catch (err) {
         results[session.id] = { error: String(err) };
       }
@@ -293,8 +264,7 @@ export class SessionManager {
     if (!session) {
       throw new Error(`Session ${sessionId} not found`);
     }
-    (session as any)._closeStream?.();
-    session.query.close();
+    session.session.close();
     session.status = "ended";
     this.sessions.delete(sessionId);
     this.saveState();
@@ -304,8 +274,7 @@ export class SessionManager {
     const ended: string[] = [];
     for (const session of this.getActiveSessions()) {
       if (session.isHub) continue;
-      (session as any)._closeStream?.();
-      session.query.close();
+      session.session.close();
       session.status = "ended";
       this.sessions.delete(session.id);
       ended.push(session.id);
@@ -320,8 +289,7 @@ export class SessionManager {
       throw new Error(`Session ${sessionId} not found`);
     }
     const { name, isHub } = session;
-    (session as any)._closeStream?.();
-    session.query.close();
+    session.session.close();
     session.status = "ended";
     this.sessions.delete(sessionId);
 

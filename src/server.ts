@@ -166,11 +166,10 @@ app.get("/api/sessions", (_req, res) => {
 
 app.post("/api/sessions/new", async (req, res) => {
   try {
-    const { name, resume, sessionId, prompt } = req.body ?? {};
+    const { name, resume, prompt } = req.body ?? {};
     const session = await manager.createSession({
       name,
       resume,
-      sessionId,
       prompt,
     });
     res.json({ id: session.id, name: session.name, status: session.status });
