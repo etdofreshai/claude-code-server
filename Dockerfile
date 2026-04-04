@@ -27,5 +27,7 @@ WORKDIR /home/claude/workspace
 # Environment variables (override at runtime)
 ENV CLAUDE_CODE_ARGS="--dangerously-skip-permissions --remote-control"
 ENV RESTART_DELAY="3"
+ENV GH_TOKEN_ETDOFRESH=""
+ENV GH_TOKEN_ETDOFRESHAI=""
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

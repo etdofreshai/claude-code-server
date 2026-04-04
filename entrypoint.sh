@@ -6,6 +6,18 @@ echo "Workspace directory: /home/claude/workspace"
 echo "Args: ${CLAUDE_CODE_ARGS}"
 echo "Restart delay: ${RESTART_DELAY}s"
 
+# Configure git credentials for GitHub accounts
+if [ -n "${GH_TOKEN_ETDOFRESH}" ]; then
+    git config --global "url.https://etdofresh:${GH_TOKEN_ETDOFRESH}@github.com/etdofresh/.insteadOf" "https://github.com/etdofresh/"
+    git config --global "url.git@github.com:etdofresh/.insteadOf" "" 2>/dev/null || true
+    echo "GitHub: etdofresh configured"
+fi
+
+if [ -n "${GH_TOKEN_ETDOFRESHAI}" ]; then
+    git config --global "url.https://etdofreshai:${GH_TOKEN_ETDOFRESHAI}@github.com/etdofreshai/.insteadOf" "https://github.com/etdofreshai/"
+    echo "GitHub: etdofreshai configured"
+fi
+
 # Trap SIGTERM/SIGINT for graceful shutdown
 cleanup() {
     echo "Shutting down..."
