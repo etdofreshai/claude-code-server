@@ -239,11 +239,16 @@ app.listen(PORT, async () => {
   console.log(`claude-code-server listening on :${PORT}`);
   console.log(`Workspace: ${WORKSPACE_DIR}`);
 
-  // Auto-start the hub session
+  // Restore previous sessions, or start a fresh hub
   try {
-    const hub = await manager.startHub();
-    console.log(`Hub session started: ${hub.id}`);
+    await manager.restore();
+    if (!manager.getHub()) {
+      const hub = await manager.startHub();
+      console.log(`Hub session started: ${hub.id}`);
+    } else {
+      console.log(`Hub session restored: ${manager.getHub()!.id}`);
+    }
   } catch (err) {
-    console.error("Failed to start hub session:", err);
+    console.error("Failed to initialize sessions:", err);
   }
 });
