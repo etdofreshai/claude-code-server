@@ -25,7 +25,7 @@ USER claude
 WORKDIR /home/claude/workspace
 
 # Environment variables (override at runtime)
-ENV CLAUDE_CODE_ARGS="--permission-mode bypassPermissions"
+ENV CLAUDE_CODE_ARGS="--permission-mode bypassPermissions --remote-control"
 ENV RESTART_DELAY="3"
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
