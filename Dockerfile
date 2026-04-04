@@ -18,12 +18,16 @@ RUN useradd -m -s /bin/bash claude
 WORKDIR /app
 COPY package.json tsconfig.json ./
 RUN npm install
+COPY .git/ .git/
 COPY src/ src/
-ARG BUILD_SHA="unknown"
-ARG BUILD_DATETIME="unknown"
-ENV BUILD_SHA=${BUILD_SHA}
-ENV BUILD_DATETIME=${BUILD_DATETIME}
-RUN npm run build
+RUN BUILD_SHA=$(git rev-parse HEAD 2>/dev/null || echo "unknown") && \
+    BUILD_DATETIME=$(date -Iseconds) && \
+    echo "BUILD_SHA=$BUILD_SHA" > .build-env && \
+    echo "BUILD_DATETIME=$BUILD_DATETIME" >> .build-env && \
+    npm run build && \
+    rm -rf .git
+ENV BUILD_SHA=""
+ENV BUILD_DATETIME=""
 
 # Set ownership and workspace
 RUN mkdir -p /home/claude/workspace && chown claude:claude /home/claude/workspace

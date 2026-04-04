@@ -1,10 +1,26 @@
 import express from "express";
+import { readFileSync } from "fs";
 import { SessionManager } from "./session-manager.js";
 
+function loadBuildEnv(): Record<string, string> {
+  try {
+    const content = readFileSync("/app/.build-env", "utf-8");
+    const env: Record<string, string> = {};
+    for (const line of content.split("\n")) {
+      const [key, ...rest] = line.split("=");
+      if (key) env[key.trim()] = rest.join("=").trim();
+    }
+    return env;
+  } catch {
+    return {};
+  }
+}
+
+const buildEnv = loadBuildEnv();
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR ?? "/home/claude/workspace";
-const BUILD_SHA = process.env.BUILD_SHA ?? "unknown";
-const BUILD_DATETIME = process.env.BUILD_DATETIME ?? "unknown";
+const BUILD_SHA = process.env.BUILD_SHA || buildEnv.BUILD_SHA || "unknown";
+const BUILD_DATETIME = process.env.BUILD_DATETIME || buildEnv.BUILD_DATETIME || "unknown";
 const START_TIME = new Date();
 
 const app = express();
