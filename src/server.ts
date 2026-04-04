@@ -14,8 +14,19 @@ const manager = new SessionManager(WORKSPACE_DIR);
 
 // --- Landing Page ---
 
+function formatSession(s: { id: string; name: string; status: string; createdAt: Date; messageCount: number }) {
+  return `<tr>
+    <td><code>${s.id}</code></td>
+    <td>${s.name}</td>
+    <td><span class="status ${s.status}">${s.status}</span></td>
+    <td>${s.messageCount}</td>
+    <td>${new Date(s.createdAt).toISOString()}</td>
+  </tr>`;
+}
+
 app.get("/", (_req, res) => {
-  const sessions = manager.getAllSessions().map((s) => ({
+  const hub = manager.getHub();
+  const workers = manager.getWorkerSessions().map((s) => ({
     id: s.id,
     name: s.name,
     status: s.status,
@@ -23,20 +34,14 @@ app.get("/", (_req, res) => {
     messageCount: s.messages.length,
   }));
   const uptime = Math.floor((Date.now() - START_TIME.getTime()) / 1000);
+  const activeWorkers = workers.filter((s) => s.status === "running").length;
 
-  const sessionRows = sessions.length
-    ? sessions
-        .map(
-          (s) =>
-            `<tr>
-          <td><code>${s.id}</code></td>
-          <td>${s.name}</td>
-          <td><span class="status ${s.status}">${s.status}</span></td>
-          <td>${s.messageCount}</td>
-          <td>${new Date(s.createdAt).toISOString()}</td>
-        </tr>`
-        )
-        .join("")
+  const hubHtml = hub
+    ? formatSession({ id: hub.id, name: hub.name, status: hub.status, createdAt: hub.createdAt, messageCount: hub.messages.length })
+    : `<tr><td colspan="5" style="text-align:center;color:#888">Not started</td></tr>`;
+
+  const workerRows = workers.length
+    ? workers.map(formatSession).join("")
     : `<tr><td colspan="5" style="text-align:center;color:#888">No sessions</td></tr>`;
 
   res.type("html").send(`<!DOCTYPE html>
@@ -49,6 +54,7 @@ app.get("/", (_req, res) => {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0d1117; color: #e6edf3; padding: 2rem; }
     h1 { font-size: 1.5rem; margin-bottom: 1.5rem; }
+    h2 { font-size: 1.1rem; margin-bottom: 0.75rem; margin-top: 1.5rem; }
     .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
     .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1rem; }
     .card .label { font-size: 0.75rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
@@ -56,7 +62,7 @@ app.get("/", (_req, res) => {
     .running { color: #3fb950; }
     .starting { color: #d29922; }
     .ended { color: #8b949e; }
-    table { width: 100%; border-collapse: collapse; background: #161b22; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; background: #161b22; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; margin-bottom: 1rem; }
     th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #21262d; }
     th { background: #1c2128; font-size: 0.8rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
     code { background: #1c2128; padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.85em; }
@@ -87,13 +93,18 @@ app.get("/", (_req, res) => {
     </div>
     <div class="card">
       <div class="label">Active Sessions</div>
-      <div class="value">${sessions.filter((s) => s.status === "running").length} / ${sessions.length}</div>
+      <div class="value">${activeWorkers} / ${workers.length}</div>
     </div>
   </div>
-  <h2 style="font-size:1.1rem;margin-bottom:0.75rem">Sessions</h2>
+  <h2>Hub Session</h2>
   <table>
     <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Messages</th><th>Created</th></tr></thead>
-    <tbody>${sessionRows}</tbody>
+    <tbody>${hubHtml}</tbody>
+  </table>
+  <h2>Worker Sessions</h2>
+  <table>
+    <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Messages</th><th>Created</th></tr></thead>
+    <tbody>${workerRows}</tbody>
   </table>
 </body>
 </html>`);
@@ -224,7 +235,15 @@ app.post("/api/sessions/:sessionId/restart", async (req, res) => {
 
 // --- Start ---
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`claude-code-server listening on :${PORT}`);
   console.log(`Workspace: ${WORKSPACE_DIR}`);
+
+  // Auto-start the hub session
+  try {
+    const hub = await manager.startHub();
+    console.log(`Hub session started: ${hub.id}`);
+  } catch (err) {
+    console.error("Failed to start hub session:", err);
+  }
 });

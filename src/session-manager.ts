@@ -7,6 +7,7 @@ export interface SessionInfo {
   status: "starting" | "running" | "ended";
   createdAt: Date;
   messages: SDKMessage[];
+  isHub: boolean;
 }
 
 export class SessionManager {
@@ -19,11 +20,28 @@ export class SessionManager {
     this.defaultOptions = defaultOptions;
   }
 
+  private hubSession: SessionInfo | null = null;
+
+  async startHub(): Promise<SessionInfo> {
+    const session = await this.createSession({
+      name: "Hub",
+      prompt: "You are the hub session for claude-code-server. You are always running. Await instructions.",
+      isHub: true,
+    });
+    this.hubSession = session;
+    return session;
+  }
+
+  getHub(): SessionInfo | null {
+    return this.hubSession;
+  }
+
   async createSession(options?: {
     name?: string;
     resume?: string;
     sessionId?: string;
     prompt?: string;
+    isHub?: boolean;
   }): Promise<SessionInfo> {
     const name = options?.name ?? `session-${Date.now()}`;
     const prompt = options?.prompt ?? "You are ready. Await instructions.";
@@ -48,6 +66,7 @@ export class SessionManager {
       status: "starting",
       createdAt: new Date(),
       messages,
+      isHub: options?.isHub ?? false,
     };
 
     // Start consuming messages in background
@@ -108,6 +127,10 @@ export class SessionManager {
     return this.getAllSessions().filter((s) => s.status === "running");
   }
 
+  getWorkerSessions(): SessionInfo[] {
+    return this.getAllSessions().filter((s) => !s.isHub);
+  }
+
   async reloadPlugins(sessionId: string): Promise<any> {
     const session = this.sessions.get(sessionId);
     if (!session || session.status !== "running") {
@@ -141,6 +164,7 @@ export class SessionManager {
   async endAllSessions(): Promise<string[]> {
     const ended: string[] = [];
     for (const session of this.getActiveSessions()) {
+      if (session.isHub) continue; // never end the hub session
       session.query.close();
       session.status = "ended";
       this.sessions.delete(session.id);
