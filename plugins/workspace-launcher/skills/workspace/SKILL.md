@@ -53,9 +53,11 @@ Workspace: <WORKSPACE_NAME>
 Session:   <id from response>
 Status:    <status from response>
 
-Resume:  /workspace <WORKSPACE_NAME> <id>
-End:     curl -sf -X POST http://localhost:3000/api/sessions/<id>/end
-Restart: curl -sf -X POST http://localhost:3000/api/sessions/<id>/restart
+Resume:          /workspace <WORKSPACE_NAME> <id>
+End session:     curl -sf -X POST http://localhost:3000/api/sessions/<id>/end
+Restart session: curl -sf -X POST http://localhost:3000/api/sessions/<id>/restart
+Reload plugins:  curl -sf -X POST http://localhost:3000/api/sessions/<id>/reload-plugins
+Restart server:  curl -sf -X POST http://localhost:3000/api/server/restart
 ```
 
 ---
