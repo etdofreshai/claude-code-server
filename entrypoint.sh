@@ -6,14 +6,6 @@ echo "Workspace directory: /workspace"
 echo "Args: ${CLAUDE_CODE_ARGS}"
 echo "Restart delay: ${RESTART_DELAY}s"
 
-# Pass OAuth token to Claude Code if set
-if [ -n "${CLAUDE_CODE_OAUTH_TOKEN}" ]; then
-    export CLAUDE_CODE_OAUTH_TOKEN
-    echo "OAuth token: configured"
-else
-    echo "OAuth token: not set"
-fi
-
 # Trap SIGTERM/SIGINT for graceful shutdown
 cleanup() {
     echo "Shutting down..."
