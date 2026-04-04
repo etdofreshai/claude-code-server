@@ -234,6 +234,15 @@ app.post("/api/sessions/:sessionId/restart", async (req, res) => {
   }
 });
 
+// --- Server ---
+
+app.post("/api/server/restart", async (_req, res) => {
+  res.json({ status: "restarting" });
+  console.log("Server restart requested via API");
+  // Exit with 0 — Docker restart policy will bring it back
+  setTimeout(() => process.exit(0), 500);
+});
+
 // --- Start ---
 
 app.listen(PORT, async () => {
