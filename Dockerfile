@@ -19,10 +19,9 @@ WORKDIR /app
 COPY package.json tsconfig.json ./
 RUN npm install
 COPY src/ src/
-RUN echo "BUILD_DATETIME=$(date -Iseconds)" > .build-env && \
-    npm run build
-ENV BUILD_SHA=""
-ENV BUILD_DATETIME=""
+RUN npm run build && \
+    sed -i "s|__BUILD_DATETIME__|$(date -Iseconds)|g" dist/server.js && \
+    sed -i "s|__BUILD_SHA__|$(git rev-parse HEAD 2>/dev/null || echo unknown)|g" dist/server.js
 
 # Set ownership and workspace
 RUN mkdir -p /home/claude/workspace && chown claude:claude /home/claude/workspace
