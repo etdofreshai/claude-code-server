@@ -1,10 +1,17 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "claude-code-server",
   "description": "Plugins for claude-code-server — session management via API",
+  "owner": {
+    "name": "etgarcia",
+    "email": "etdofresh@gmail.com"
+  },
   "plugins": [
     {
       "name": "workspace-launcher",
-      "path": "plugins/workspace-launcher"
+      "description": "Launch and manage Claude Code sessions via claude-code-server API",
+      "source": "./plugins/workspace-launcher",
+      "category": "productivity"
     }
   ]
 }
