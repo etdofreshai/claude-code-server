@@ -161,10 +161,6 @@ export class SessionManager {
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       settingSources: ["user", "project", "local"],
-      extraArgs: {
-        "remote-control": null,
-        ...this.defaultOptions.extraArgs,
-      },
       ...(options?.resume ? { resume: options.resume } : {}),
       ...(options?.sessionId ? { sessionId: options.sessionId } : {}),
     };
@@ -194,6 +190,15 @@ export class SessionManager {
 
     this.sessions.set(session.id, session);
     this.saveState();
+
+    // Enable remote control so session is accessible from claude.ai/code
+    try {
+      await (q as any).enableRemoteControl(true);
+      console.log(`Session ${session.id}: remote control enabled`);
+    } catch (err) {
+      console.error(`Session ${session.id}: failed to enable remote control:`, err);
+    }
+
     console.log(`Session created: ${session.id} (${name})`);
     return session;
   }
