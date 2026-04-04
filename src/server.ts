@@ -244,7 +244,7 @@ app.listen(PORT, async () => {
   try {
     await manager.restore();
     if (!manager.getHub()) {
-      const hubName = HUB_NAME_TEMPLATE.replace("${DATETIME}", new Date().toISOString().replace(/[:.]/g, "").slice(0, 15));
+      const hubName = HUB_NAME_TEMPLATE.replace("${DATETIME}", new Date().toISOString().replace(/[-:.]/g, "").slice(0, 13));
       const hub = await manager.startHub(hubName);
       console.log(`Hub session started: ${hub.id}`);
     } else {
