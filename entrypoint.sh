@@ -15,29 +15,22 @@ else
 fi
 
 # Trap SIGTERM/SIGINT for graceful shutdown
-CHILD_PID=""
 cleanup() {
     echo "Shutting down..."
-    if [ -n "$CHILD_PID" ] && kill -0 "$CHILD_PID" 2>/dev/null; then
-        kill "$CHILD_PID"
-        wait "$CHILD_PID" 2>/dev/null || true
-    fi
+    # Kill all child processes
+    kill 0 2>/dev/null || true
     exit 0
 }
 trap cleanup SIGTERM SIGINT
 
 while true; do
-    echo "$(date -Iseconds) Starting Claude Code with remote-control..."
+    echo "$(date -Iseconds) Starting Claude Code..."
 
-    # Start claude with configured args
+    # Use script to allocate a pseudo-TTY so Claude runs in interactive mode
+    # This enables remote control without needing docker run -t
     # shellcheck disable=SC2086
-    claude $CLAUDE_CODE_ARGS &
-    CHILD_PID=$!
-
-    # Wait for the process to exit
-    wait "$CHILD_PID" || true
+    script -qec "claude $CLAUDE_CODE_ARGS" /dev/null || true
     EXIT_CODE=$?
-    CHILD_PID=""
 
     echo "$(date -Iseconds) Claude Code exited with code $EXIT_CODE"
     echo "Restarting in ${RESTART_DELAY}s..."

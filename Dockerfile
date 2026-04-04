@@ -26,7 +26,7 @@ WORKDIR /workspace
 
 # Environment variables (override at runtime)
 ENV CLAUDE_CODE_OAUTH_TOKEN=""
-ENV CLAUDE_CODE_ARGS="--remote-control --dangerously-skip-permissions"
+ENV CLAUDE_CODE_ARGS="--dangerously-skip-permissions"
 ENV RESTART_DELAY="3"
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
