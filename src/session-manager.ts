@@ -145,6 +145,7 @@ export class SessionManager {
     resume?: string;
     prompt?: string;
     isHub?: boolean;
+    cwd?: string;
   }): Promise<SessionInfo> {
     const name = options?.name ?? `session-${Date.now()}`;
 
@@ -156,7 +157,7 @@ export class SessionManager {
 
     const queryOptions: Options = {
       ...this.defaultOptions,
-      cwd: this.cwd,
+      cwd: options?.cwd ?? this.cwd,
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       settingSources: ["user", "project", "local"],
@@ -195,7 +196,7 @@ export class SessionManager {
 
     // Set session display name
     try {
-      await renameSession(session.id, name, { dir: this.cwd });
+      await renameSession(session.id, name, { dir: options?.cwd ?? this.cwd });
       console.log(`Session ${session.id}: renamed to "${name}"`);
     } catch (err) {
       console.error(`Session ${session.id}: failed to rename:`, err);

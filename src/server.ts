@@ -166,9 +166,10 @@ app.get("/api/sessions", (_req, res) => {
 
 app.post("/api/sessions/new", async (req, res) => {
   try {
-    const { name, resume, prompt } = req.body ?? {};
+    const { name, resume, prompt, cwd } = req.body ?? {};
     const session = await manager.createSession({
       name,
+      cwd,
       resume,
       prompt,
     });
@@ -203,9 +204,10 @@ app.post("/api/sessions/:sessionId/end", async (req, res) => {
 
 app.post("/api/sessions/:sessionId/resume", async (req, res) => {
   try {
-    const { name, prompt } = req.body ?? {};
+    const { name, prompt, cwd } = req.body ?? {};
     const session = await manager.createSession({
       name,
+      cwd,
       resume: req.params.sessionId,
       prompt,
     });
