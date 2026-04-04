@@ -19,6 +19,10 @@ WORKDIR /app
 COPY package.json tsconfig.json ./
 RUN npm install
 COPY src/ src/
+ARG BUILD_SHA="unknown"
+ARG BUILD_DATETIME="unknown"
+ENV BUILD_SHA=${BUILD_SHA}
+ENV BUILD_DATETIME=${BUILD_DATETIME}
 RUN npm run build
 
 # Set ownership and workspace
