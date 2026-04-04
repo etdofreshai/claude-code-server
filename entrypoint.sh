@@ -2,7 +2,7 @@
 set -euo pipefail
 
 echo "=== claude-code-server ==="
-echo "Workspace directory: /workspace"
+echo "Workspace directory: /home/claude/workspace"
 echo "Args: ${CLAUDE_CODE_ARGS}"
 echo "Restart delay: ${RESTART_DELAY}s"
 

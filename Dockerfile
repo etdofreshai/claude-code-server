@@ -19,10 +19,10 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 RUN useradd -m -s /bin/bash claude
 
 # Create workspace directory
-RUN mkdir -p /workspace && chown claude:claude /workspace
+RUN mkdir -p /home/claude/workspace && chown claude:claude /home/claude/workspace
 
 USER claude
-WORKDIR /workspace
+WORKDIR /home/claude/workspace
 
 # Environment variables (override at runtime)
 ENV CLAUDE_CODE_ARGS="--permission-mode bypassPermissions"
