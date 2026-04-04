@@ -21,11 +21,6 @@ RUN useradd -m -s /bin/bash claude
 # Create workspace directory
 RUN mkdir -p /home/claude/workspace && chown claude:claude /home/claude/workspace
 
-# Pre-accept the dangerous mode permission prompt
-RUN mkdir -p /home/claude/.claude && \
-    echo '{"skipDangerousModePermissionPrompt": true}' > /home/claude/.claude/settings.json && \
-    chown -R claude:claude /home/claude/.claude
-
 USER claude
 WORKDIR /home/claude/workspace
 
