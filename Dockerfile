@@ -22,6 +22,7 @@ RUN useradd -m -s /bin/bash claude
 RUN mkdir -p /home/claude/workspace && chown claude:claude /home/claude/workspace
 
 USER claude
+RUN git config --global user.name "ETdoFresh" && git config --global user.email "etdofresh@gmail.com"
 WORKDIR /home/claude/workspace
 
 # Environment variables (override at runtime)

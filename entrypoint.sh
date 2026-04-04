@@ -30,9 +30,12 @@ trap cleanup SIGTERM SIGINT
 while true; do
     echo "$(date -Iseconds) Starting Claude Code..."
 
+    # Replace ${DATETIME} placeholder with current timestamp (YYYYMMDDTHHmmss)
+    RESOLVED_ARGS="${CLAUDE_CODE_ARGS//\$\{DATETIME\}/$(date +%Y%m%dT%H%M%S)}"
+
     # Use script to allocate a pseudo-TTY for interactive mode
     # shellcheck disable=SC2086
-    script -qec "claude $CLAUDE_CODE_ARGS" /dev/null || true
+    script -qec "claude $RESOLVED_ARGS" /dev/null || true
     EXIT_CODE=$?
 
     echo "$(date -Iseconds) Claude Code exited with code $EXIT_CODE"
