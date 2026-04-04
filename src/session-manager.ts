@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { query, type Query, type SDKMessage, type SDKUserMessage, type Options } from "@anthropic-ai/claude-agent-sdk";
+import { query, renameSession, type Query, type SDKMessage, type SDKUserMessage, type Options } from "@anthropic-ai/claude-agent-sdk";
 
 interface PersistedSession {
   id: string;
@@ -190,6 +190,13 @@ export class SessionManager {
 
     this.sessions.set(session.id, session);
     this.saveState();
+
+    // Set session display name
+    try {
+      await renameSession(session.id, name, { dir: this.cwd });
+    } catch (err) {
+      console.error(`Session ${session.id}: failed to rename:`, err);
+    }
 
     // Enable remote control so session is accessible from claude.ai/code
     try {
