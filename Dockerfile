@@ -36,6 +36,7 @@ WORKDIR /home/claude/workspace
 # Environment variables
 ENV PORT="3000"
 ENV WORKSPACE_DIR="/home/claude/workspace"
+ENV HUB_NAME="Hub"
 ENV GH_TOKEN_ETDOFRESH=""
 ENV GH_TOKEN_ETDOFRESHAI=""
 

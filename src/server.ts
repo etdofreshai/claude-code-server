@@ -3,6 +3,7 @@ import { SessionManager } from "./session-manager.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR ?? "/home/claude/workspace";
+const HUB_NAME_TEMPLATE = process.env.HUB_NAME ?? "Hub";
 const BUILD_SHA = "__BUILD_SHA__";
 const BUILD_DATETIME = "__BUILD_DATETIME__";
 const START_TIME = new Date();
@@ -243,7 +244,8 @@ app.listen(PORT, async () => {
   try {
     await manager.restore();
     if (!manager.getHub()) {
-      const hub = await manager.startHub();
+      const hubName = HUB_NAME_TEMPLATE.replace("${DATETIME}", new Date().toISOString().replace(/[:.]/g, "").slice(0, 15));
+      const hub = await manager.startHub(hubName);
       console.log(`Hub session started: ${hub.id}`);
     } else {
       console.log(`Hub session restored: ${manager.getHub()!.id}`);

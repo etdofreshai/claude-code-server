@@ -79,9 +79,9 @@ export class SessionManager {
     }
   }
 
-  async startHub(): Promise<SessionInfo> {
+  async startHub(name: string = "Hub"): Promise<SessionInfo> {
     const session = await this.createSession({
-      name: "Hub",
+      name,
       prompt: "You are the hub session for claude-code-server. You are always running. Await instructions.",
       isHub: true,
     });
