@@ -18,10 +18,12 @@ RUN useradd -m -s /bin/bash claude
 WORKDIR /app
 COPY package.json tsconfig.json ./
 RUN npm install
+COPY .git/ .git/
 COPY src/ src/
 RUN npm run build && \
     sed -i "s|__BUILD_DATETIME__|$(date -Iseconds)|g" dist/server.js && \
-    sed -i "s|__BUILD_SHA__|$(git rev-parse HEAD 2>/dev/null || echo unknown)|g" dist/server.js
+    sed -i "s|__BUILD_SHA__|$(git rev-parse HEAD 2>/dev/null || echo unknown)|g" dist/server.js && \
+    rm -rf .git
 
 # Set ownership and workspace
 RUN mkdir -p /home/claude/workspace && chown claude:claude /home/claude/workspace
