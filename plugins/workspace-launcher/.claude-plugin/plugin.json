@@ -1,0 +1,8 @@
+{
+  "name": "workspace-launcher",
+  "description": "Launch and manage Claude Code sessions via claude-code-server API or locally",
+  "version": "2.0.0",
+  "author": { "name": "etgarcia" },
+  "keywords": ["workspace", "launcher", "session", "remote-control", "claude-code-server"],
+  "license": "MIT"
+}

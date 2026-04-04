@@ -1,0 +1,10 @@
+{
+  "name": "claude-code-server",
+  "description": "Plugins for claude-code-server — session management via API",
+  "plugins": [
+    {
+      "name": "workspace-launcher",
+      "path": "plugins/workspace-launcher"
+    }
+  ]
+}
