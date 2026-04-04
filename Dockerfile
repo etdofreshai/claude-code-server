@@ -11,9 +11,13 @@ RUN apt-get update && apt-get install -y \
 # Install Claude Code globally
 RUN npm install -g @anthropic-ai/claude-code
 
-# Create workspace directory
-RUN mkdir -p /workspace
+# Create non-root user (claude can't use --dangerously-skip-permissions as root)
+RUN useradd -m -s /bin/bash claude
 
+# Create workspace directory
+RUN mkdir -p /workspace && chown claude:claude /workspace
+
+USER claude
 WORKDIR /workspace
 
 # Copy the supervisor script
