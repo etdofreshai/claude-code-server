@@ -79,12 +79,30 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
 #chat-header {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  justify-content: space-between;
   padding-bottom: 1rem;
   border-bottom: 1px solid #21262d;
   margin-bottom: 1rem;
   flex-shrink: 0;
 }
+
+#chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+#rc-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: #8b949e;
+  cursor: pointer;
+  user-select: none;
+}
+#rc-toggle input { cursor: pointer; }
+#rc-toggle:has(input:checked) { color: #d29922; }
 
 #back-btn {
   background: #21262d;
@@ -160,6 +178,19 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
   cursor: pointer;
 }
 #chat-form button:hover { background: #2ea043; }
+
+/* Loading */
+.loading {
+  text-align: center;
+  color: #8b949e;
+  padding: 2rem;
+  font-style: italic;
+}
+
+/* Badges */
+.badge { display: inline-block; padding: 0.15em 0.5em; border-radius: 8px; font-size: 0.75rem; margin-right: 0.25rem; }
+.badge.channel { background: #1a3a5c; color: #58a6ff; }
+.badge.rc { background: #2a1f00; color: #d29922; }
 
 /* Headings */
 h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }

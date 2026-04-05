@@ -363,6 +363,52 @@ app.get("/api/sessions/:sessionId", (req, res) => {
   });
 });
 
+app.get("/api/sessions/:sessionId/messages", (req, res) => {
+  const session = manager.getSession(req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found" });
+
+  // Extract readable messages from SDK message stream
+  const messages: Array<{ from: string; text: string; ts: string | null }> = [];
+  for (const msg of session.messages) {
+    if (msg.type === "user" && !("replay" in msg)) {
+      const content = msg.message?.content;
+      const text = typeof content === "string"
+        ? content
+        : Array.isArray(content)
+          ? content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n")
+          : null;
+      if (text) messages.push({ from: "user", text, ts: msg.timestamp ?? null });
+    } else if (msg.type === "assistant") {
+      const content = (msg as any).message?.content;
+      if (!Array.isArray(content)) continue;
+      const text = content
+        .filter((b: any) => b.type === "text")
+        .map((b: any) => b.text)
+        .join("\n");
+      if (text) messages.push({ from: "assistant", text, ts: null });
+    }
+  }
+
+  res.json({ messages });
+});
+
+app.post("/api/sessions/:sessionId/remote-control", async (req, res) => {
+  const session = manager.getSession(req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found" });
+  if (session.status !== "running") return res.status(400).json({ error: "Session not running" });
+
+  const { enabled } = req.body ?? {};
+  if (typeof enabled !== "boolean") return res.status(400).json({ error: "enabled (boolean) is required" });
+
+  try {
+    await (session.query as any).enableRemoteControl(enabled);
+    session.remoteControl = enabled;
+    res.json({ remoteControl: enabled });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 app.post("/api/sessions/:sessionId/message", (req, res) => {
   const session = manager.getSession(req.params.sessionId);
   if (!session) return res.status(404).json({ error: "Session not found" });
