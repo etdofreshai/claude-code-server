@@ -145,6 +145,88 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
 }
 
 .msg-text { white-space: pre-wrap; word-break: break-word; }
+
+/* Markdown rendering for assistant messages */
+.message.assistant .msg-text { white-space: normal; }
+
+.message.assistant .msg-text p { margin-bottom: 0.5em; }
+.message.assistant .msg-text p:last-child { margin-bottom: 0; }
+
+.message.assistant .msg-text h1,
+.message.assistant .msg-text h2,
+.message.assistant .msg-text h3,
+.message.assistant .msg-text h4,
+.message.assistant .msg-text h5,
+.message.assistant .msg-text h6 {
+  color: #e6edf3;
+  margin: 0.8em 0 0.4em;
+  line-height: 1.3;
+}
+.message.assistant .msg-text h1 { font-size: 1.3em; }
+.message.assistant .msg-text h2 { font-size: 1.15em; }
+.message.assistant .msg-text h3 { font-size: 1.05em; }
+.message.assistant .msg-text h4,
+.message.assistant .msg-text h5,
+.message.assistant .msg-text h6 { font-size: 0.95em; }
+
+.message.assistant .msg-text pre {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.message.assistant .msg-text pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: 0.9em;
+  color: #e6edf3;
+}
+.message.assistant .msg-text code {
+  background: #1c2128;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.9em;
+  color: #e6edf3;
+}
+
+.message.assistant .msg-text ul,
+.message.assistant .msg-text ol {
+  padding-left: 1.5em;
+  margin: 0.4em 0;
+}
+.message.assistant .msg-text li { margin-bottom: 0.2em; }
+
+.message.assistant .msg-text table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5em 0;
+  font-size: 0.9em;
+}
+.message.assistant .msg-text th,
+.message.assistant .msg-text td {
+  border: 1px solid #30363d;
+  padding: 0.4em 0.75em;
+  text-align: left;
+}
+.message.assistant .msg-text th { background: #1c2128; color: #8b949e; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.03em; }
+
+.message.assistant .msg-text blockquote {
+  border-left: 3px solid #58a6ff;
+  padding: 0.3em 0.8em;
+  margin: 0.5em 0;
+  color: #8b949e;
+}
+
+.message.assistant .msg-text a { color: #58a6ff; text-decoration: none; }
+.message.assistant .msg-text a:hover { text-decoration: underline; }
+
+.message.assistant .msg-text img { max-width: 100%; border-radius: 6px; }
+
+.message.assistant .msg-text hr { border: none; border-top: 1px solid #30363d; margin: 0.75em 0; }
 .msg-time { font-size: 0.7rem; color: #8b949e; margin-top: 0.35rem; }
 
 .message.tool-summary {

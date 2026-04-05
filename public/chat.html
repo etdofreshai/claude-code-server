@@ -5,6 +5,7 @@
   <title>Chat — Claude Code Server</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked@15/lib/marked.umd.min.js"></script>
 </head>
 <body>
   <div id="app">
@@ -218,7 +219,16 @@
       div.className = `message ${from}` + (type === 'tool' ? ' tool-summary' : '') + (type === 'result' ? ' result' : '');
       const timeStr = ts ? new Date(ts).toLocaleTimeString() : '';
       const prefix = type === 'tool' ? '<span class="tool-icon">⚙️</span> ' : '';
-      div.innerHTML = `<div class="msg-text">${prefix}${escapeHtml(text)}</div>${timeStr ? `<div class="msg-time">${timeStr}</div>` : ''}`;
+
+      // Render assistant messages as markdown, user/tool messages as plain text
+      let renderedText;
+      if (from === 'assistant' && type === 'text' && typeof marked !== 'undefined') {
+        renderedText = marked.parse(text || '');
+      } else {
+        renderedText = prefix + escapeHtml(text);
+      }
+
+      div.innerHTML = `<div class="msg-text">${renderedText}</div>${timeStr ? `<div class="msg-time">${timeStr}</div>` : ''}`;
       const container = document.getElementById('messages');
       container.appendChild(div);
       container.scrollTop = container.scrollHeight;
