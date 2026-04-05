@@ -679,9 +679,9 @@ async function runIsolatedSummary(transcript: string, sessionName: string): Prom
   return resultText;
 }
 
-// Helper: read session messages and format as transcript
+// Helper: read session messages and format as transcript (entire conversation)
 async function buildTranscript(sessionId: string): Promise<string[]> {
-  const msgs = await getSessionMessages(sessionId, { dir: WORKSPACE_DIR, limit: 50 });
+  const msgs = await getSessionMessages(sessionId, { dir: WORKSPACE_DIR });
   const lines: string[] = [];
   for (const msg of msgs) {
     if (msg.type === "system") continue;
