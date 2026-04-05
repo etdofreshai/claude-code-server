@@ -52,8 +52,27 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
   padding: 1rem;
   cursor: pointer;
   transition: border-color 0.15s;
+  position: relative;
 }
 .session-card:hover { border-color: #58a6ff; }
+
+.session-remove {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  color: #8b949e;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 0.3em;
+  line-height: 1;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+.session-card:hover .session-remove { opacity: 1; }
+.session-remove:hover { color: #f85149; background: rgba(248, 81, 73, 0.1); }
 
 .session-name { font-weight: 600; margin-bottom: 0.5rem; }
 
@@ -92,6 +111,12 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
   gap: 0.75rem;
 }
 
+#chat-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 #rc-toggle {
   display: flex;
   align-items: center;
@@ -103,6 +128,18 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
 }
 #rc-toggle input { cursor: pointer; }
 #rc-toggle:has(input:checked) { color: #d29922; }
+
+#remove-btn {
+  background: #21262d;
+  color: #f85149;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 0.35em 0.75em;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+#remove-btn:hover { background: #da3633; color: #fff; border-color: #da3633; }
 
 #back-btn {
   background: #21262d;

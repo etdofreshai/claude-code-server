@@ -29,10 +29,13 @@
           <span id="chat-session-name"></span>
           <span id="chat-session-status" class="status"></span>
         </div>
-        <label id="rc-toggle">
-          <input type="checkbox" id="rc-checkbox" onchange="toggleRemoteControl()" />
-          <span>Remote Control</span>
-        </label>
+        <div id="chat-header-right">
+          <label id="rc-toggle">
+            <input type="checkbox" id="rc-checkbox" onchange="toggleRemoteControl()" />
+            <span>Remote Control</span>
+          </label>
+          <button id="remove-btn" onclick="removeCurrentSession()">Remove</button>
+        </div>
       </div>
       <div id="messages"></div>
       <form id="chat-form">
@@ -86,6 +89,7 @@
           ? '<span class="badge rc">RC</span>'
           : '';
         div.innerHTML = `
+          <button class="session-remove" onclick="removeSession('${s.id}', event)" title="Remove session">&times;</button>
           <div class="session-name">${s.name}</div>
           <div class="session-meta">
             <span class="status ${s.status}">${s.status}</span>
@@ -94,7 +98,10 @@
             <code>${s.id.slice(0, 8)}</code>
           </div>
         `;
-        div.onclick = () => joinSession(s.id, s.name, s.status, s.remoteControl);
+        div.onclick = (e) => {
+          if (e.target.closest('.session-remove')) return;
+          joinSession(s.id, s.name, s.status, s.remoteControl);
+        };
         list.appendChild(div);
       }
     }
@@ -211,6 +218,43 @@
         alert('Failed to toggle remote control');
         checkbox.checked = !enabled; // revert
       }
+    }
+
+    async function removeSession(sessionId, event) {
+      event.stopPropagation();
+      const card = event.target.closest('.session-card');
+      const name = card?.querySelector('.session-name')?.textContent || sessionId.slice(0, 8);
+      if (!confirm(`Remove session "${name}"?`)) return;
+
+      try {
+        const res = await fetch(`${API}/api/sessions/${sessionId}/end`, { method: 'POST' });
+        const data = await res.json();
+        if (data.error) {
+          console.error('Remove failed:', data.error);
+        }
+      } catch (err) {
+        console.error('Remove failed:', err);
+      }
+      loadSessions();
+    }
+
+    async function removeCurrentSession() {
+      if (!currentSessionId) return;
+      const name = document.getElementById('chat-session-name').textContent || currentSessionId.slice(0, 8);
+      if (!confirm(`Remove session "${name}"?`)) return;
+
+      try {
+        const res = await fetch(`${API}/api/sessions/${currentSessionId}/end`, { method: 'POST' });
+        const data = await res.json();
+        if (data.error) {
+          console.error('Remove failed:', data.error);
+          return;
+        }
+      } catch (err) {
+        console.error('Remove failed:', err);
+        return;
+      }
+      showPicker();
     }
 
     function appendMessage(from, text, ts, msgType) {
