@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer } from "http";
 import { join } from "path";
+import { readFileSync, existsSync } from "fs";
 import { SessionManager } from "./session-manager.js";
 import { Config } from "./config.js";
 import { Heartbeat } from "./heartbeat.js";
@@ -367,59 +368,68 @@ app.get("/api/sessions/:sessionId/messages", (req, res) => {
   const session = manager.getSession(req.params.sessionId);
   if (!session) return res.status(404).json({ error: "Session not found" });
 
-  // Debug: return raw message shapes if ?debug=1
-  if (req.query.debug === "1") {
-    const debug = session.messages.map((msg) => ({
-      type: msg.type,
-      ...(msg.type === "user" ? {
-        isSynthetic: (msg as any).isSynthetic,
-        isReplay: (msg as any).isReplay,
-        tool_use_result: !!(msg as any).tool_use_result,
-        parent_tool_use_id: (msg as any).parent_tool_use_id,
-        contentType: typeof (msg as any).message?.content,
-        contentPreview: typeof (msg as any).message?.content === "string"
-          ? (msg as any).message.content.slice(0, 80)
-          : Array.isArray((msg as any).message?.content)
-            ? (msg as any).message.content.map((b: any) => b.type).join(",")
-            : null,
-      } : {}),
-      ...(msg.type === "assistant" ? {
-        contentTypes: Array.isArray((msg as any).message?.content)
-          ? (msg as any).message.content.map((b: any) => b.type).join(",")
-          : "none",
-      } : {}),
-    }));
-    return res.json({ total: session.messages.length, debug });
+  // Read from the JSONL file on disk (full conversation history)
+  // Claude Code stores sessions at ~/.claude/projects/<slug>/<sessionId>.jsonl
+  // where slug is the cwd with / replaced by - (leading slash becomes the first -)
+  const projectSlug = WORKSPACE_DIR.replace(/\//g, "-");
+  const jsonlPath = join(
+    process.env.HOME ?? "/home/claude",
+    ".claude/projects",
+    projectSlug,
+    `${req.params.sessionId}.jsonl`
+  );
+
+  const messages: Array<{ from: string; type: string; text: string; ts: string | null }> = [];
+
+  try {
+    if (existsSync(jsonlPath)) {
+      const data = readFileSync(jsonlPath, "utf-8");
+      const lines = data.split("\n").filter(Boolean);
+
+      for (const line of lines) {
+        try {
+          const msg = JSON.parse(line);
+
+          if (msg.type === "user") {
+            // Skip tool results (internal plumbing)
+            const content = msg.message?.content;
+            const hasToolResult = Array.isArray(content) && content.some((b: any) => b.type === "tool_result");
+            if (hasToolResult) continue;
+
+            const text = typeof content === "string"
+              ? content
+              : Array.isArray(content)
+                ? content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n")
+                : null;
+            if (text) messages.push({ from: "user", type: "text", text, ts: msg.timestamp ?? null });
+
+          } else if (msg.type === "assistant") {
+            const content = msg.message?.content;
+            if (!Array.isArray(content)) continue;
+
+            // Extract text blocks
+            const textParts = content.filter((b: any) => b.type === "text").map((b: any) => b.text);
+            if (textParts.length > 0) {
+              messages.push({ from: "assistant", type: "text", text: textParts.join("\n"), ts: null });
+            }
+
+            // Note tool uses (collapsed summary)
+            const toolUses = content.filter((b: any) => b.type === "tool_use");
+            if (toolUses.length > 0) {
+              const tools = toolUses.map((t: any) => t.name).join(", ");
+              messages.push({ from: "assistant", type: "tool", text: tools, ts: null });
+            }
+          }
+        } catch { /* skip unparseable lines */ }
+      }
+    }
+  } catch (err) {
+    console.error("Failed to read JSONL:", err);
   }
 
-  // Extract readable messages from SDK message stream
-  const messages: Array<{ from: string; type: string; text: string; ts: string | null }> = [];
-  for (const msg of session.messages) {
-    if (msg.type === "user") {
-      // Skip synthetic/tool_use_result messages (internal plumbing)
-      if ((msg as any).isSynthetic || (msg as any).tool_use_result) continue;
-      const content = (msg as any).message?.content;
-      const text = typeof content === "string"
-        ? content
-        : Array.isArray(content)
-          ? content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n")
-          : null;
-      if (text) messages.push({ from: "user", type: "text", text, ts: (msg as any).timestamp ?? null });
-    } else if (msg.type === "assistant") {
-      const content = (msg as any).message?.content;
-      if (!Array.isArray(content)) continue;
-      const text = content
-        .filter((b: any) => b.type === "text")
-        .map((b: any) => b.text)
-        .join("\n");
-      if (text) messages.push({ from: "assistant", type: "text", text, ts: null });
-    } else if (msg.type === "tool_use_summary") {
-      messages.push({ from: "assistant", type: "tool", text: (msg as any).summary, ts: null });
-    } else if (msg.type === "result") {
-      const result = (msg as any).result;
-      if (result) messages.push({ from: "assistant", type: "result", text: result, ts: null });
-    }
-  }
+  // Also append any recent in-memory messages not yet flushed to JSONL
+  // (messages from the current turn that haven't been written to disk yet)
+  // This is handled by the SDK, so the JSONL should be up to date.
 
   res.json({ messages });
 });
