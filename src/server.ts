@@ -396,9 +396,6 @@ app.get("/api/sessions/:sessionId/messages", (req, res) => {
           const msg = JSON.parse(line);
 
           if (msg.type === "user") {
-            // Skip synthetic/bootstrap messages
-            if (msg.isSynthetic) continue;
-
             // Skip tool results (internal plumbing)
             const content = msg.message?.content;
             const hasToolResult = Array.isArray(content) && content.some((b: any) => b.type === "tool_result");

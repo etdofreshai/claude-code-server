@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, appendFileSync } from "fs";
 import { join } from "path";
+import { randomUUID } from "crypto";
 import { query, renameSession, type Query, type SDKMessage, type SDKUserMessage, type Options } from "@anthropic-ai/claude-agent-sdk";
 import type { ChannelBinding } from "./channels/types.js";
 
@@ -237,28 +238,22 @@ export class SessionManager {
     const remoteControl = options?.remoteControl ?? false;
     const name = options?.name ?? `session-${Date.now()}`;
 
+    const isResuming = !!options?.resume;
+
     const { stream, push, close } = createMessageStream();
 
-    // For new sessions (not resumed), we must push an initial message so the
-    // SDK bootstraps and emits the init event (which gives us the session ID).
-    // Use the explicit prompt if provided, otherwise a silent bootstrap message
-    // marked as synthetic so it doesn't appear in the conversation.
-    let isSilentBootstrap = false;
+    // Only send a message if an explicit prompt was provided.
+    // No bootstrap messages needed — we pre-assign the session ID via
+    // Options.sessionId so we don't need to wait for the SDK's init event.
     if (options?.prompt) {
       push(makeUserMessage(options.prompt));
-    } else if (!options?.resume) {
-      isSilentBootstrap = true;
-      const bootstrapMsg: SDKUserMessage = {
-        type: "user",
-        message: { role: "user", content: "." },
-        parent_tool_use_id: null,
-        isSynthetic: true,
-        timestamp: new Date().toISOString(),
-      };
-      push(bootstrapMsg);
     }
 
     const abortController = new AbortController();
+
+    // For new sessions, pre-assign a UUID so we know the ID immediately
+    // without needing to wait for the SDK's init event.
+    const preAssignedId = !isResuming ? randomUUID() : undefined;
 
     const queryOptions: Options = {
       ...this.defaultOptions,
@@ -272,19 +267,20 @@ export class SessionManager {
         chrome: null,
         ...this.defaultOptions.extraArgs,
       },
-      ...(options?.resume ? { resume: options.resume } : {}),
+      ...(isResuming ? { resume: options!.resume } : {}),
+      ...(preAssignedId ? { sessionId: preAssignedId } : {}),
     };
 
     const q = query({ prompt: stream, options: queryOptions });
     const messages: SDKMessage[] = [];
 
-    const isResuming = !!options?.resume;
+    const sessionId = isResuming ? options!.resume! : preAssignedId!;
 
     const session: SessionInfo = {
-      id: isResuming ? options!.resume! : "", // known immediately for resumed sessions
+      id: sessionId,
       name,
       query: q,
-      status: isResuming ? "running" : "starting",
+      status: "running",
       createdAt: new Date(),
       messages,
       isHub,
@@ -298,20 +294,14 @@ export class SessionManager {
     (session as any)._abortController = abortController;
 
     // Start consuming messages in background
-    this.consumeMessages(session, isSilentBootstrap);
+    this.consumeMessages(session);
 
-    if (isResuming) {
-      // For resumed sessions, we already know the ID — no need to wait
-      this.sessions.set(session.id, session);
-      this.saveState();
-      this.appendHistory(session, "resumed");
-    } else {
-      // For new sessions, wait for init to get the session ID
-      await this.waitForInit(session);
-      this.sessions.set(session.id, session);
-      this.saveState();
-      this.appendHistory(session, "created");
+    // Session ID is known immediately — no need to wait for init
+    this.sessions.set(session.id, session);
+    this.saveState();
+    this.appendHistory(session, isResuming ? "resumed" : "created");
 
+    if (!isResuming) {
       // Set session display name
       try {
         await renameSession(session.id, name, { dir: options?.cwd ?? this.cwd });
@@ -335,46 +325,26 @@ export class SessionManager {
     return session;
   }
 
-  private async waitForInit(session: SessionInfo, timeoutMs: number = 30000): Promise<void> {
-    const start = Date.now();
-    return new Promise((resolve, reject) => {
-      const check = () => {
-        if (session.id !== "") {
-          resolve();
-        } else if (Date.now() - start > timeoutMs) {
-          reject(new Error(`Session init timed out after ${timeoutMs}ms`));
-        } else {
-          setTimeout(check, 50);
-        }
-      };
-      check();
-    });
-  }
-
-  private async consumeMessages(session: SessionInfo, suppressFirstTurn = false): Promise<void> {
-    let suppressing = suppressFirstTurn;
+  private async consumeMessages(session: SessionInfo): Promise<void> {
     try {
       for await (const message of session.query) {
         session.messages.push(message);
 
         if (message.type === "system" && message.subtype === "init") {
-          session.id = (message as any).session_id ?? session.id;
+          // Update ID if the SDK assigned a different one (shouldn't happen with pre-assigned IDs)
+          const initId = (message as any).session_id;
+          if (initId && initId !== session.id) {
+            console.log(`Session ${session.id}: SDK assigned different ID ${initId}`);
+          }
           session.status = "running";
-        }
-
-        // When the bootstrap turn's result arrives, stop suppressing
-        if (suppressing && message.type === "result") {
-          suppressing = false;
-          console.log(`Session ${session.id}: bootstrap turn complete (suppressed)`);
-          continue;
         }
 
         if (message.type === "result") {
           console.log(`Session ${session.id}: result received`);
         }
 
-        // Notify listener of assistant text messages (skip if suppressing bootstrap)
-        if (message.type === "assistant" && this.onAssistantMessage && session.id && !suppressing) {
+        // Notify listener of assistant text messages
+        if (message.type === "assistant" && this.onAssistantMessage && session.id) {
           const content = (message as any).message?.content;
           if (Array.isArray(content)) {
             const text = content
