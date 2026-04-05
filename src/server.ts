@@ -367,6 +367,31 @@ app.get("/api/sessions/:sessionId/messages", (req, res) => {
   const session = manager.getSession(req.params.sessionId);
   if (!session) return res.status(404).json({ error: "Session not found" });
 
+  // Debug: return raw message shapes if ?debug=1
+  if (req.query.debug === "1") {
+    const debug = session.messages.map((msg) => ({
+      type: msg.type,
+      ...(msg.type === "user" ? {
+        isSynthetic: (msg as any).isSynthetic,
+        isReplay: (msg as any).isReplay,
+        tool_use_result: !!(msg as any).tool_use_result,
+        parent_tool_use_id: (msg as any).parent_tool_use_id,
+        contentType: typeof (msg as any).message?.content,
+        contentPreview: typeof (msg as any).message?.content === "string"
+          ? (msg as any).message.content.slice(0, 80)
+          : Array.isArray((msg as any).message?.content)
+            ? (msg as any).message.content.map((b: any) => b.type).join(",")
+            : null,
+      } : {}),
+      ...(msg.type === "assistant" ? {
+        contentTypes: Array.isArray((msg as any).message?.content)
+          ? (msg as any).message.content.map((b: any) => b.type).join(",")
+          : "none",
+      } : {}),
+    }));
+    return res.json({ total: session.messages.length, debug });
+  }
+
   // Extract readable messages from SDK message stream
   const messages: Array<{ from: string; type: string; text: string; ts: string | null }> = [];
   for (const msg of session.messages) {
