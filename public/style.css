@@ -129,6 +129,25 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
 #rc-toggle input { cursor: pointer; }
 #rc-toggle:has(input:checked) { color: #d29922; }
 
+#hub-btn {
+  background: #21262d;
+  color: #3fb950;
+  border: 1px solid #238636;
+  border-radius: 6px;
+  padding: 0.35em 0.75em;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+#hub-btn:hover:not(:disabled) { background: #238636; color: #fff; border-color: #238636; }
+#hub-btn.is-hub {
+  background: #0d2818;
+  color: #3fb950;
+  border-color: #1a4028;
+  cursor: default;
+}
+#hub-btn:disabled { opacity: 0.8; }
+
 #remove-btn {
   background: #21262d;
   color: #f85149;
@@ -446,6 +465,7 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
 .badge { display: inline-block; padding: 0.15em 0.5em; border-radius: 8px; font-size: 0.75rem; margin-right: 0.25rem; }
 .badge.channel { background: #1a3a5c; color: #58a6ff; }
 .badge.rc { background: #2a1f00; color: #d29922; }
+.badge.hub { background: #1a3a1a; color: #3fb950; }
 
 /* Headings */
 h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }

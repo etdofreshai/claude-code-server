@@ -345,6 +345,7 @@ app.get("/api/sessions", (_req, res) => {
       status: s.status,
       createdAt: s.createdAt,
       messageCount,
+      isHub: s.isHub,
       remoteControl: s.remoteControl,
       channel: s.channel,
     };
@@ -500,6 +501,18 @@ app.post("/api/sessions/:sessionId/remote-control", async (req, res) => {
     await (session.query as any).enableRemoteControl(enabled);
     session.remoteControl = enabled;
     res.json({ remoteControl: enabled });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.post("/api/sessions/:sessionId/set-hub", (req, res) => {
+  const session = manager.getSession(req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found" });
+
+  try {
+    manager.setHub(req.params.sessionId);
+    res.json({ isHub: true, sessionId: req.params.sessionId });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

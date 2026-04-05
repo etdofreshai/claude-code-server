@@ -33,6 +33,7 @@
           <span id="chat-session-status" class="status"></span>
         </div>
         <div id="chat-header-right">
+          <button id="hub-btn" onclick="setAsHub()">Set as Hub</button>
           <label id="rc-toggle">
             <input type="checkbox" id="rc-checkbox" onchange="toggleRemoteControl()" />
             <span>Remote Control</span>
@@ -126,19 +127,22 @@
         const rcBadge = s.remoteControl
           ? '<span class="badge rc">RC</span>'
           : '';
+        const hubBadge = s.isHub
+          ? '<span class="badge hub">Hub</span>'
+          : '';
         div.innerHTML = `
           <button class="session-remove" onclick="removeSession('${s.id}', event)" title="Remove session">&times;</button>
           <div class="session-name">${s.name}</div>
           <div class="session-meta">
             <span class="status ${s.status}">${s.status}</span>
             <span>${s.messageCount} msgs</span>
-            ${channelBadge}${rcBadge}
+            ${channelBadge}${rcBadge}${hubBadge}
             <code>${s.id.slice(0, 8)}</code>
           </div>
         `;
         div.onclick = (e) => {
           if (e.target.closest('.session-remove')) return;
-          joinSession(s.id, s.name, s.status, s.remoteControl);
+          joinSession(s.id, s.name, s.status, s.remoteControl, s.isHub);
         };
         list.appendChild(div);
       }
@@ -171,9 +175,12 @@
       };
     }
 
-    async function joinSession(id, name, status, remoteControl) {
+    let currentIsHub = false;
+
+    async function joinSession(id, name, status, remoteControl, isHub) {
       currentRoom = id;
       currentSessionId = id;
+      currentIsHub = isHub || false;
       document.getElementById('session-picker').style.display = 'none';
       document.getElementById('chat-view').style.display = 'flex';
       document.getElementById('chat-session-name').textContent = name;
@@ -184,6 +191,9 @@
       // Set remote control checkbox
       const rcCheckbox = document.getElementById('rc-checkbox');
       rcCheckbox.checked = remoteControl;
+
+      // Update hub button state
+      updateHubButton();
 
       // Clear and load history
       const container = document.getElementById('messages');
@@ -297,6 +307,41 @@
         return;
       }
       showPicker();
+    }
+
+    function updateHubButton() {
+      const btn = document.getElementById('hub-btn');
+      if (currentIsHub) {
+        btn.textContent = 'Hub';
+        btn.classList.add('is-hub');
+        btn.disabled = true;
+      } else {
+        btn.textContent = 'Set as Hub';
+        btn.classList.remove('is-hub');
+        btn.disabled = false;
+      }
+    }
+
+    async function setAsHub() {
+      if (!currentSessionId || currentIsHub) return;
+      const btn = document.getElementById('hub-btn');
+      btn.disabled = true;
+      btn.textContent = 'Setting...';
+
+      try {
+        const res = await fetch(`${API}/api/sessions/${currentSessionId}/set-hub`, { method: 'POST' });
+        const data = await res.json();
+        if (data.error) {
+          btn.textContent = 'Failed';
+          setTimeout(() => updateHubButton(), 2000);
+          return;
+        }
+        currentIsHub = true;
+        updateHubButton();
+      } catch (err) {
+        btn.textContent = 'Error';
+        setTimeout(() => updateHubButton(), 2000);
+      }
     }
 
     function appendMessage(from, text, ts, msgType, imageUrls) {

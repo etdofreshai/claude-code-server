@@ -253,6 +253,23 @@ export class SessionManager {
     return this.hubSession;
   }
 
+  setHub(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
+
+    // Unmark the old hub
+    if (this.hubSession && this.hubSession.id !== sessionId) {
+      this.hubSession.isHub = false;
+    }
+
+    // Set the new hub
+    session.isHub = true;
+    this.hubSession = session;
+    this.saveHubId(sessionId);
+    this.saveState();
+    console.log(`Hub set to session ${sessionId} (${session.name})`);
+  }
+
   async createSession(options?: {
     name?: string;
     resume?: string;
