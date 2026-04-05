@@ -165,12 +165,14 @@ export class SessionManager {
 
     const { stream, push, close } = createMessageStream();
 
-    // Send initial prompt if provided (otherwise session waits for first message)
+    // Send initial prompt — SDK needs at least one message to start
+    const now = new Date().toLocaleString("sv-SE", { timeZone: "America/Chicago", hour12: false });
     if (options?.prompt) {
       push(makeUserMessage(options.prompt));
-    } else if (!options?.resume) {
-      // For new sessions without a prompt, send a minimal init
-      push(makeUserMessage("Session started. Awaiting instructions."));
+    } else if (options?.resume) {
+      push(makeUserMessage(`Session resumed. Current time: ${now} CT.`));
+    } else {
+      push(makeUserMessage(`Session started. Current time: ${now} CT. Awaiting instructions.`));
     }
 
     const queryOptions: Options = {
