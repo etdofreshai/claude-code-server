@@ -116,7 +116,7 @@ export class WebChannel implements Channel {
       }
 
       case "msg": {
-        // Client sends a chat message
+        // Client sends a chat message (optionally with images)
         if (!client.room) {
           client.ws.send(JSON.stringify({ type: "error", error: "Not in a room" }));
           return;
@@ -129,6 +129,7 @@ export class WebChannel implements Channel {
           text: msg.text,
           room: client.room,
           ts: new Date().toISOString(),
+          images: msg.images ?? undefined,
         });
         for (const other of this.clients) {
           if (other !== client && other.room === client.room && other.ws.readyState === WebSocket.OPEN) {
@@ -138,9 +139,10 @@ export class WebChannel implements Channel {
 
         // Route to channel manager
         if (this.onMessage) {
-          this.onMessage(client.room, msg.text, {
+          this.onMessage(client.room, msg.text ?? "", {
             userId: client.sessionId ?? undefined,
             timestamp: new Date().toISOString(),
+            images: msg.images ?? undefined,
           });
         }
         break;

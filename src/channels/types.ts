@@ -1,9 +1,15 @@
+export interface ImageData {
+  mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  data: string; // base64-encoded
+}
+
 export interface MessageMeta {
   userId?: string;
   userName?: string;
   replyTo?: string;
   timestamp?: string;
   filePath?: string;
+  images?: ImageData[];
 }
 
 export interface ReplyMeta {

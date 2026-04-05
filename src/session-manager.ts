@@ -27,8 +27,10 @@ export interface SessionInfo {
   isHub: boolean;
   remoteControl: boolean;
   channel?: ChannelBinding;
-  sendMessage: (text: string) => void;
+  sendMessage: (text: string, images?: ImageAttachment[]) => void;
 }
+
+export type { ImageAttachment };
 
 /**
  * Creates an async iterable that stays open until explicitly closed.
@@ -67,10 +69,38 @@ function createMessageStream() {
   };
 }
 
-function makeUserMessage(text: string): SDKUserMessage {
+interface ImageAttachment {
+  mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  data: string; // base64-encoded
+}
+
+function makeUserMessage(text: string, images?: ImageAttachment[]): SDKUserMessage {
+  let content: any;
+
+  if (images && images.length > 0) {
+    // Build content block array with text + images
+    const blocks: any[] = [];
+    if (text) {
+      blocks.push({ type: "text", text });
+    }
+    for (const img of images) {
+      blocks.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: img.mediaType,
+          data: img.data,
+        },
+      });
+    }
+    content = blocks;
+  } else {
+    content = text;
+  }
+
   return {
     type: "user",
-    message: { role: "user", content: text },
+    message: { role: "user", content },
     parent_tool_use_id: null,
     timestamp: new Date().toISOString(),
   };
@@ -247,7 +277,7 @@ export class SessionManager {
       isHub,
       remoteControl,
       channel: options?.channel,
-      sendMessage: (text: string) => push(makeUserMessage(text)),
+      sendMessage: (text: string, images?: ImageAttachment[]) => push(makeUserMessage(text, images)),
     };
 
     // Store close fn and abort controller for cleanup/interrupt

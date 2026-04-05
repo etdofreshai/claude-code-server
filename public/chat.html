@@ -38,8 +38,13 @@
         </div>
       </div>
       <div id="messages"></div>
+      <div id="image-preview" style="display:none">
+        <div id="image-preview-list"></div>
+      </div>
       <form id="chat-form">
-        <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" />
+        <button type="button" id="attach-img-btn" onclick="document.getElementById('image-file-input').click()" title="Attach image">🖼️</button>
+        <input type="file" id="image-file-input" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden />
+        <input type="text" id="chat-input" placeholder="Type a message or paste an image..." autocomplete="off" />
         <button type="button" id="interrupt-btn" onclick="interruptSession()" style="display:none">Stop</button>
         <button type="submit" id="send-btn">Send</button>
       </form>
@@ -119,7 +124,9 @@
       ws.onmessage = (e) => {
         const msg = JSON.parse(e.data);
         if (msg.type === 'msg' && msg.room === currentRoom) {
-          appendMessage(msg.from, msg.text, msg.ts);
+          // Build data URLs from base64 images if present
+          const imageUrls = msg.images?.map(img => `data:${img.mediaType};base64,${img.data}`);
+          appendMessage(msg.from, msg.text, msg.ts, undefined, imageUrls);
           // Show interrupt button when assistant is responding
           if (msg.from === 'assistant') {
             showInterrupt(true);
@@ -257,7 +264,7 @@
       showPicker();
     }
 
-    function appendMessage(from, text, ts, msgType) {
+    function appendMessage(from, text, ts, msgType, imageUrls) {
       const div = document.createElement('div');
       const type = msgType || 'text';
       div.className = `message ${from}` + (type === 'tool' ? ' tool-summary' : '') + (type === 'result' ? ' result' : '');
@@ -269,10 +276,18 @@
       if (from === 'assistant' && type === 'text' && typeof marked !== 'undefined') {
         renderedText = marked.parse(text || '');
       } else {
-        renderedText = prefix + escapeHtml(text);
+        renderedText = prefix + escapeHtml(text || '');
       }
 
-      div.innerHTML = `<div class="msg-text">${renderedText}</div>${timeStr ? `<div class="msg-time">${timeStr}</div>` : ''}`;
+      // Build image HTML if present
+      let imageHtml = '';
+      if (imageUrls && imageUrls.length > 0) {
+        imageHtml = '<div class="msg-images">' +
+          imageUrls.map(url => `<img src="${url}" class="msg-image" onclick="window.open(this.src, '_blank')" />`).join('') +
+          '</div>';
+      }
+
+      div.innerHTML = `<div class="msg-text">${renderedText}</div>${imageHtml}${timeStr ? `<div class="msg-time">${timeStr}</div>` : ''}`;
       const container = document.getElementById('messages');
       container.appendChild(div);
       container.scrollTop = container.scrollHeight;
@@ -284,19 +299,119 @@
       return div.innerHTML;
     }
 
+    // --- Image attachments ---
+
+    let pendingImages = []; // Array of { mediaType, data, dataUrl }
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result;
+          const base64 = dataUrl.split(',')[1];
+          resolve({ mediaType: file.type, data: base64, dataUrl });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function addImageFiles(files) {
+      for (const file of files) {
+        if (!file.type.match(/^image\/(jpeg|png|gif|webp)$/)) continue;
+        if (file.size > 20 * 1024 * 1024) continue; // 20MB max per image
+        const img = await fileToBase64(file);
+        pendingImages.push(img);
+      }
+      renderImagePreviews();
+    }
+
+    function removeImage(index) {
+      pendingImages.splice(index, 1);
+      renderImagePreviews();
+    }
+
+    function clearImages() {
+      pendingImages = [];
+      renderImagePreviews();
+    }
+
+    function renderImagePreviews() {
+      const container = document.getElementById('image-preview');
+      const list = document.getElementById('image-preview-list');
+      if (pendingImages.length === 0) {
+        container.style.display = 'none';
+        list.innerHTML = '';
+        return;
+      }
+      container.style.display = 'block';
+      list.innerHTML = '';
+      pendingImages.forEach((img, i) => {
+        const thumb = document.createElement('div');
+        thumb.className = 'image-thumb';
+        thumb.innerHTML = `
+          <img src="${img.dataUrl}" alt="attachment" />
+          <button class="image-thumb-remove" onclick="removeImage(${i})">&times;</button>
+        `;
+        list.appendChild(thumb);
+      });
+    }
+
+    // File picker
+    document.getElementById('image-file-input').addEventListener('change', (e) => {
+      addImageFiles(e.target.files);
+      e.target.value = '';
+    });
+
+    // Paste handler
+    document.getElementById('chat-input').addEventListener('paste', (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const imageFiles = [];
+      for (const item of items) {
+        if (item.type.match(/^image\//)) {
+          const file = item.getAsFile();
+          if (file) imageFiles.push(file);
+        }
+      }
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        addImageFiles(imageFiles);
+      }
+    });
+
+    // Drag and drop
+    const chatForm = document.getElementById('chat-form');
+    chatForm.addEventListener('dragover', (e) => { e.preventDefault(); chatForm.classList.add('drag-over'); });
+    chatForm.addEventListener('dragleave', () => chatForm.classList.remove('drag-over'));
+    chatForm.addEventListener('drop', (e) => {
+      e.preventDefault();
+      chatForm.classList.remove('drag-over');
+      const files = Array.from(e.dataTransfer.files).filter(f => f.type.match(/^image\//));
+      if (files.length > 0) addImageFiles(files);
+    });
+
     document.getElementById('chat-form').onsubmit = (e) => {
       e.preventDefault();
       const input = document.getElementById('chat-input');
       const text = input.value.trim();
-      if (!text || !currentRoom) return;
+      if (!text && pendingImages.length === 0) return;
+      if (!currentRoom) return;
+
+      // Build image payload
+      const images = pendingImages.length > 0
+        ? pendingImages.map(img => ({ mediaType: img.mediaType, data: img.data }))
+        : undefined;
 
       // Send via WebSocket
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'msg', text }));
+        ws.send(JSON.stringify({ type: 'msg', text: text || '', images }));
       }
 
-      appendMessage('user', text, new Date().toISOString());
+      // Render locally with image previews
+      appendMessage('user', text, new Date().toISOString(), undefined, pendingImages.map(img => img.dataUrl));
       input.value = '';
+      clearImages();
       showInterrupt(true);
     };
 

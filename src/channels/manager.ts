@@ -119,6 +119,6 @@ export class ChannelManager {
     }
 
     const prefix = meta.userName ? `[${meta.userName}] ` : "";
-    session.sendMessage(`${prefix}${text}`);
+    session.sendMessage(`${prefix}${text}`, meta.images);
   }
 }
