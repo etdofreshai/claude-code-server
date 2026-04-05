@@ -239,10 +239,13 @@ export class SessionManager {
 
     const { stream, push, close } = createMessageStream();
 
-    // Only send a message if an explicit prompt was provided.
-    // No automatic init messages — sessions wait for user input.
+    // For new sessions (not resumed), we must push an initial message so the
+    // SDK bootstraps and emits the init event (which gives us the session ID).
+    // Use the explicit prompt if provided, otherwise a minimal init message.
     if (options?.prompt) {
       push(makeUserMessage(options.prompt));
+    } else if (!options?.resume) {
+      push(makeUserMessage("Awaiting instructions."));
     }
 
     const abortController = new AbortController();
