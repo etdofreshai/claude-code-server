@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, appendFileSync } from "fs";
 import { join } from "path";
 import { query, renameSession, type Query, type SDKMessage, type SDKUserMessage, type Options } from "@anthropic-ai/claude-agent-sdk";
 import type { ChannelBinding } from "./channels/types.js";
@@ -10,6 +10,11 @@ interface PersistedSession {
   createdAt: string;
   remoteControl: boolean;
   channel?: ChannelBinding;
+}
+
+interface SessionHistoryEntry extends PersistedSession {
+  status: "created" | "resumed" | "ended";
+  timestamp: string;
 }
 
 export interface SessionInfo {
@@ -76,6 +81,7 @@ export class SessionManager {
   private cwd: string;
   private defaultOptions: Partial<Options>;
   private stateFile: string;
+  private historyFile: string;
   private hubSession: SessionInfo | null = null;
   onAssistantMessage: ((sessionId: string, text: string) => void) | null = null;
 
@@ -83,6 +89,7 @@ export class SessionManager {
     this.cwd = cwd;
     this.defaultOptions = defaultOptions;
     this.stateFile = join(cwd, ".claude-code-server-sessions.json");
+    this.historyFile = join(cwd, ".claude-code-server-sessions-history.jsonl");
   }
 
   private saveState(): void {
@@ -101,6 +108,42 @@ export class SessionManager {
     } catch (err) {
       console.error("Failed to save session state:", err);
     }
+  }
+
+  private appendHistory(session: SessionInfo, status: SessionHistoryEntry["status"]): void {
+    const entry: SessionHistoryEntry = {
+      id: session.id,
+      name: session.name,
+      isHub: session.isHub,
+      createdAt: session.createdAt.toISOString(),
+      remoteControl: session.remoteControl,
+      channel: session.channel,
+      status,
+      timestamp: new Date().toISOString(),
+    };
+    try {
+      appendFileSync(this.historyFile, JSON.stringify(entry) + "\n");
+    } catch (err) {
+      console.error("Failed to append session history:", err);
+    }
+  }
+
+  getHistory(): SessionHistoryEntry[] {
+    try {
+      const data = readFileSync(this.historyFile, "utf-8");
+      return data.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    } catch {
+      return [];
+    }
+  }
+
+  getHistoryLatest(): PersistedSession[] {
+    const history = this.getHistory();
+    const latest = new Map<string, SessionHistoryEntry>();
+    for (const entry of history) {
+      latest.set(entry.id, entry);
+    }
+    return Array.from(latest.values()).map(({ status, timestamp, ...rest }) => rest);
   }
 
   private loadState(): PersistedSession[] {
@@ -220,11 +263,13 @@ export class SessionManager {
       // For resumed sessions, we already know the ID — no need to wait
       this.sessions.set(session.id, session);
       this.saveState();
+      this.appendHistory(session, "resumed");
     } else {
       // For new sessions, wait for init to get the session ID
       await this.waitForInit(session);
       this.sessions.set(session.id, session);
       this.saveState();
+      this.appendHistory(session, "created");
 
       // Set session display name
       try {
@@ -298,6 +343,7 @@ export class SessionManager {
     } finally {
       session.status = "ended";
       this.saveState();
+      this.appendHistory(session, "ended");
       console.log(`Session ${session.id}: ended`);
     }
   }
@@ -381,6 +427,7 @@ export class SessionManager {
     session.status = "ended";
     this.sessions.delete(sessionId);
     this.saveState();
+    this.appendHistory(session, "ended");
   }
 
   async endAllSessions(): Promise<string[]> {

@@ -325,6 +325,10 @@ app.get("/api/sessions", (_req, res) => {
   res.json({ sessions });
 });
 
+app.get("/api/sessions/history", (_req, res) => {
+  res.json({ sessions: manager.getHistoryLatest() });
+});
+
 app.post("/api/sessions/new", async (req, res) => {
   try {
     const { name, resume, prompt, cwd, remoteControl, channel } = req.body ?? {};
