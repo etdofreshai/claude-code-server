@@ -1,7 +1,9 @@
 import express from "express";
 import { createServer } from "http";
 import { join } from "path";
-import { getSessionMessages, unstable_v2_prompt } from "@anthropic-ai/claude-agent-sdk";
+import { getSessionMessages, query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
+import { tmpdir } from "os";
+import { mkdtempSync } from "fs";
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { SessionManager } from "./session-manager.js";
 import { Config } from "./config.js";
@@ -645,40 +647,65 @@ async function getRecentContext(sessionId: string, sessionName: string): Promise
   return "";
 }
 
-// Summarize a session using a one-off query (does NOT modify the original session)
+// Helper: run a one-off summarization in a completely isolated temp session
+async function runIsolatedSummary(transcript: string, sessionName: string): Promise<string> {
+  const tempDir = mkdtempSync(join(tmpdir(), "claude-summary-"));
+  const prompt = `Here is a conversation transcript from a workspace called "${sessionName}":\n\n${transcript}\n\nPlease provide a concise summary of this conversation. Focus on: what tasks were discussed, what was accomplished, what's in progress, and any key decisions made. Format it as a brief, readable summary. Respond ONLY with the summary text, nothing else.`;
+
+  const q = sdkQuery({
+    prompt,
+    options: {
+      cwd: tempDir,
+      maxTurns: 1,
+      permissionMode: "bypassPermissions",
+      allowDangerouslySkipPermissions: true,
+    },
+  });
+
+  let resultText = "";
+  for await (const message of q) {
+    if (message.type === "assistant") {
+      const content = (message as any).message?.content;
+      if (Array.isArray(content)) {
+        const text = content
+          .filter((b: any) => b.type === "text")
+          .map((b: any) => b.text)
+          .join("\n");
+        if (text) resultText = text;
+      }
+    }
+  }
+  q.close();
+  return resultText;
+}
+
+// Helper: read session messages and format as transcript
+async function buildTranscript(sessionId: string): Promise<string[]> {
+  const msgs = await getSessionMessages(sessionId, { dir: WORKSPACE_DIR, limit: 50 });
+  const lines: string[] = [];
+  for (const msg of msgs) {
+    if (msg.type === "system") continue;
+    const msgText = extractMessageText(msg);
+    if (!msgText) continue;
+    const role = msg.type === "user" ? "User" : "Assistant";
+    lines.push(`${role}: ${msgText}`);
+  }
+  return lines;
+}
+
+// Summarize a session using an isolated one-off query (does NOT modify the original session)
 app.post("/api/sessions/:sessionId/summarize", async (req, res) => {
   const session = manager.getSession(req.params.sessionId);
   if (!session) return res.status(404).json({ error: "Session not found" });
 
   try {
-    // Read all messages from the session
-    const msgs = await getSessionMessages(req.params.sessionId, { dir: WORKSPACE_DIR, limit: 50 });
-    const lines: string[] = [];
-    for (const msg of msgs) {
-      if (msg.type === "system") continue;
-      const msgText = extractMessageText(msg);
-      if (!msgText) continue;
-      const role = msg.type === "user" ? "User" : "Assistant";
-      lines.push(`${role}: ${msgText}`);
-    }
-
+    const lines = await buildTranscript(req.params.sessionId);
     if (lines.length === 0) {
       return res.json({ summary: "(No messages in this session)" });
     }
 
-    // Use a one-off query to summarize — completely separate from the original session
-    const transcript = lines.join("\n\n");
-    const prompt = `Here is a conversation transcript from a workspace called "${session.name}":\n\n${transcript}\n\nPlease provide a concise summary of this conversation. Focus on: what tasks were discussed, what was accomplished, what's in progress, and any key decisions made. Format it as a brief, readable summary. Respond ONLY with the summary text, nothing else.`;
-
-    const result = await unstable_v2_prompt(prompt, {
-      model: "claude-sonnet-4-6",
-    });
-
-    if (result.type === "result" && result.subtype === "success") {
-      res.json({ summary: result.result });
-    } else {
-      res.status(500).json({ error: "Summary generation failed" });
-    }
+    const summary = await runIsolatedSummary(lines.join("\n\n"), session.name);
+    res.json({ summary: summary || "(Summary generation returned empty)" });
   } catch (err) {
     console.error("Failed to summarize session:", err);
     res.status(500).json({ error: String(err) });
@@ -700,24 +727,13 @@ app.post("/api/sessions/:sessionId/send-to", async (req, res) => {
   let contextBlock = "";
   try {
     if (mode === "summary") {
-      // Summarize using a one-off query (does NOT modify the source session)
-      const msgs = await getSessionMessages(req.params.sessionId, { dir: WORKSPACE_DIR, limit: 50 });
-      const lines: string[] = [];
-      for (const msg of msgs) {
-        if (msg.type === "system") continue;
-        const msgText = extractMessageText(msg);
-        if (!msgText) continue;
-        const role = msg.type === "user" ? "User" : "Assistant";
-        lines.push(`${role}: ${msgText}`);
-      }
-
+      // Summarize using an isolated one-off query in a temp directory
+      // Does NOT modify the source session in any way
+      const lines = await buildTranscript(req.params.sessionId);
       if (lines.length > 0) {
-        const transcript = lines.join("\n\n");
-        const prompt = `Here is a conversation transcript from a workspace called "${sourceSession.name}":\n\n${transcript}\n\nPlease provide a concise summary of this conversation. Focus on: what tasks were discussed, what was accomplished, what's in progress, and any key decisions made. Format it as a brief, readable summary. Respond ONLY with the summary text, nothing else.`;
-
-        const result = await unstable_v2_prompt(prompt, { model: "claude-sonnet-4-6" });
-        if (result.type === "result" && result.subtype === "success") {
-          contextBlock = `[Summary from "${sourceSession.name}"]:\n${result.result}`;
+        const summary = await runIsolatedSummary(lines.join("\n\n"), sourceSession.name);
+        if (summary) {
+          contextBlock = `[Summary from "${sourceSession.name}"]:\n${summary}`;
         }
       }
     } else {
