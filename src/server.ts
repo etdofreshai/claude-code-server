@@ -368,16 +368,18 @@ app.get("/api/sessions/:sessionId/messages", (req, res) => {
   if (!session) return res.status(404).json({ error: "Session not found" });
 
   // Extract readable messages from SDK message stream
-  const messages: Array<{ from: string; text: string; ts: string | null }> = [];
+  const messages: Array<{ from: string; type: string; text: string; ts: string | null }> = [];
   for (const msg of session.messages) {
-    if (msg.type === "user" && !("replay" in msg)) {
-      const content = msg.message?.content;
+    if (msg.type === "user") {
+      // Skip synthetic/tool_use_result messages (internal plumbing)
+      if ((msg as any).isSynthetic || (msg as any).tool_use_result) continue;
+      const content = (msg as any).message?.content;
       const text = typeof content === "string"
         ? content
         : Array.isArray(content)
           ? content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n")
           : null;
-      if (text) messages.push({ from: "user", text, ts: msg.timestamp ?? null });
+      if (text) messages.push({ from: "user", type: "text", text, ts: (msg as any).timestamp ?? null });
     } else if (msg.type === "assistant") {
       const content = (msg as any).message?.content;
       if (!Array.isArray(content)) continue;
@@ -385,7 +387,12 @@ app.get("/api/sessions/:sessionId/messages", (req, res) => {
         .filter((b: any) => b.type === "text")
         .map((b: any) => b.text)
         .join("\n");
-      if (text) messages.push({ from: "assistant", text, ts: null });
+      if (text) messages.push({ from: "assistant", type: "text", text, ts: null });
+    } else if (msg.type === "tool_use_summary") {
+      messages.push({ from: "assistant", type: "tool", text: (msg as any).summary, ts: null });
+    } else if (msg.type === "result") {
+      const result = (msg as any).result;
+      if (result) messages.push({ from: "assistant", type: "result", text: result, ts: null });
     }
   }
 

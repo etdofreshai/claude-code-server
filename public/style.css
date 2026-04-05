@@ -147,6 +147,22 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
 .msg-text { white-space: pre-wrap; word-break: break-word; }
 .msg-time { font-size: 0.7rem; color: #8b949e; margin-top: 0.35rem; }
 
+.message.tool-summary {
+  background: #1c1c1c;
+  border: 1px solid #30363d;
+  font-size: 0.85rem;
+  color: #8b949e;
+  padding: 0.4rem 0.75rem;
+  max-width: 90%;
+}
+.message.tool-summary .tool-icon { font-size: 0.8rem; }
+
+.message.result {
+  background: #0d2818;
+  border: 1px solid #1a4028;
+  max-width: 90%;
+}
+
 /* Chat form */
 #chat-form {
   display: flex;

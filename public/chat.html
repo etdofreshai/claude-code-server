@@ -115,7 +115,7 @@
         container.innerHTML = '';
 
         for (const msg of data.messages) {
-          appendMessage(msg.from, msg.text, msg.ts);
+          appendMessage(msg.from, msg.text, msg.ts, msg.type);
         }
       } catch (err) {
         container.innerHTML = '';
@@ -160,11 +160,13 @@
       }
     }
 
-    function appendMessage(from, text, ts) {
+    function appendMessage(from, text, ts, msgType) {
       const div = document.createElement('div');
-      div.className = `message ${from}`;
+      const type = msgType || 'text';
+      div.className = `message ${from}` + (type === 'tool' ? ' tool-summary' : '') + (type === 'result' ? ' result' : '');
       const timeStr = ts ? new Date(ts).toLocaleTimeString() : '';
-      div.innerHTML = `<div class="msg-text">${escapeHtml(text)}</div>${timeStr ? `<div class="msg-time">${timeStr}</div>` : ''}`;
+      const prefix = type === 'tool' ? '<span class="tool-icon">⚙️</span> ' : '';
+      div.innerHTML = `<div class="msg-text">${prefix}${escapeHtml(text)}</div>${timeStr ? `<div class="msg-time">${timeStr}</div>` : ''}`;
       const container = document.getElementById('messages');
       container.appendChild(div);
       container.scrollTop = container.scrollHeight;
