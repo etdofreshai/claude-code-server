@@ -113,6 +113,7 @@ export class SessionManager {
   private defaultOptions: Partial<Options>;
   private stateFile: string;
   private historyFile: string;
+  private hubIdFile: string;
   private hubSession: SessionInfo | null = null;
   private isShuttingDown = false;
   onAssistantMessage: ((sessionId: string, text: string) => void) | null = null;
@@ -123,6 +124,23 @@ export class SessionManager {
     this.defaultOptions = defaultOptions;
     this.stateFile = join(cwd, ".claude-code-server-sessions.json");
     this.historyFile = join(cwd, ".claude-code-server-sessions-history.jsonl");
+    this.hubIdFile = join(cwd, ".claude-code-server-hub-id");
+  }
+
+  private getSavedHubId(): string | null {
+    try {
+      return readFileSync(this.hubIdFile, "utf-8").trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  private saveHubId(id: string): void {
+    try {
+      writeFileSync(this.hubIdFile, id);
+    } catch (err) {
+      console.error("Failed to save hub ID:", err);
+    }
   }
 
   private saveState(): void {
@@ -205,6 +223,7 @@ export class SessionManager {
         });
         if (entry.isHub) {
           this.hubSession = session;
+          this.saveHubId(session.id);
         }
         console.log(`Restored session: ${session.id} (${name})`);
       } catch (err) {
@@ -214,10 +233,18 @@ export class SessionManager {
   }
 
   async startHub(name: string = "Hub"): Promise<SessionInfo> {
+    // Reuse the persisted hub session ID if one exists, so the hub
+    // always resumes the same conversation across restarts.
+    const savedHubId = this.getSavedHubId();
+
     const session = await this.createSession({
       name,
       isHub: true,
+      ...(savedHubId ? { resume: savedHubId } : {}),
     });
+
+    // Save the hub ID for future restarts
+    this.saveHubId(session.id);
     this.hubSession = session;
     return session;
   }
