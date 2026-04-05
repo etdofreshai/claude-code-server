@@ -1,7 +1,7 @@
 import express from "express";
 import { createServer } from "http";
 import { join } from "path";
-import { getSessionMessages } from "@anthropic-ai/claude-agent-sdk";
+import { getSessionMessages, unstable_v2_prompt } from "@anthropic-ai/claude-agent-sdk";
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { SessionManager } from "./session-manager.js";
 import { Config } from "./config.js";
@@ -645,39 +645,42 @@ async function getRecentContext(sessionId: string, sessionName: string): Promise
   return "";
 }
 
-// Summarize a session by asking it to produce a summary
+// Summarize a session using a one-off query (does NOT modify the original session)
 app.post("/api/sessions/:sessionId/summarize", async (req, res) => {
   const session = manager.getSession(req.params.sessionId);
   if (!session) return res.status(404).json({ error: "Session not found" });
-  if (session.status !== "running") return res.status(400).json({ error: "Session not running" });
-
-  // Send summarization prompt to the session and collect the response
-  const summaryPrompt = "Please provide a concise summary of our conversation so far. Focus on: what tasks were discussed, what was accomplished, what's in progress, and any key decisions made. Format it as a brief, readable summary that could be shared with another workspace for context. Do NOT use any tools — just respond with the summary text.";
-
-  // Listen for the next assistant message from this session
-  const summaryPromise = new Promise<string>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("Summary timed out after 60s")), 60000);
-    const originalCallback = manager.onAssistantMessage;
-
-    manager.onAssistantMessage = (sid, text) => {
-      // Forward to original handler (web channel, etc.)
-      if (originalCallback) originalCallback(sid, text);
-
-      // Capture summary from the source session
-      if (sid === req.params.sessionId) {
-        clearTimeout(timeout);
-        manager.onAssistantMessage = originalCallback;
-        resolve(text);
-      }
-    };
-  });
-
-  session.sendMessage(summaryPrompt);
 
   try {
-    const summary = await summaryPromise;
-    res.json({ summary });
+    // Read all messages from the session
+    const msgs = await getSessionMessages(req.params.sessionId, { dir: WORKSPACE_DIR, limit: 50 });
+    const lines: string[] = [];
+    for (const msg of msgs) {
+      if (msg.type === "system") continue;
+      const msgText = extractMessageText(msg);
+      if (!msgText) continue;
+      const role = msg.type === "user" ? "User" : "Assistant";
+      lines.push(`${role}: ${msgText}`);
+    }
+
+    if (lines.length === 0) {
+      return res.json({ summary: "(No messages in this session)" });
+    }
+
+    // Use a one-off query to summarize — completely separate from the original session
+    const transcript = lines.join("\n\n");
+    const prompt = `Here is a conversation transcript from a workspace called "${session.name}":\n\n${transcript}\n\nPlease provide a concise summary of this conversation. Focus on: what tasks were discussed, what was accomplished, what's in progress, and any key decisions made. Format it as a brief, readable summary. Respond ONLY with the summary text, nothing else.`;
+
+    const result = await unstable_v2_prompt(prompt, {
+      model: "claude-sonnet-4-6",
+    });
+
+    if (result.type === "result" && result.subtype === "success") {
+      res.json({ summary: result.result });
+    } else {
+      res.status(500).json({ error: "Summary generation failed" });
+    }
   } catch (err) {
+    console.error("Failed to summarize session:", err);
     res.status(500).json({ error: String(err) });
   }
 });
@@ -697,13 +700,25 @@ app.post("/api/sessions/:sessionId/send-to", async (req, res) => {
   let contextBlock = "";
   try {
     if (mode === "summary") {
-      // Ask the source session to summarize, then use that
-      const summaryRes = await fetch(`http://localhost:${PORT}/api/sessions/${req.params.sessionId}/summarize`, {
-        method: "POST",
-      });
-      const summaryData = await summaryRes.json();
-      if (summaryData.summary) {
-        contextBlock = `[Summary from "${sourceSession.name}"]:\n${summaryData.summary}`;
+      // Summarize using a one-off query (does NOT modify the source session)
+      const msgs = await getSessionMessages(req.params.sessionId, { dir: WORKSPACE_DIR, limit: 50 });
+      const lines: string[] = [];
+      for (const msg of msgs) {
+        if (msg.type === "system") continue;
+        const msgText = extractMessageText(msg);
+        if (!msgText) continue;
+        const role = msg.type === "user" ? "User" : "Assistant";
+        lines.push(`${role}: ${msgText}`);
+      }
+
+      if (lines.length > 0) {
+        const transcript = lines.join("\n\n");
+        const prompt = `Here is a conversation transcript from a workspace called "${sourceSession.name}":\n\n${transcript}\n\nPlease provide a concise summary of this conversation. Focus on: what tasks were discussed, what was accomplished, what's in progress, and any key decisions made. Format it as a brief, readable summary. Respond ONLY with the summary text, nothing else.`;
+
+        const result = await unstable_v2_prompt(prompt, { model: "claude-sonnet-4-6" });
+        if (result.type === "result" && result.subtype === "success") {
+          contextBlock = `[Summary from "${sourceSession.name}"]:\n${result.result}`;
+        }
       }
     } else {
       // Default: include recent messages (no truncation)
