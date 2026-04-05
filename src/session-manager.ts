@@ -165,13 +165,12 @@ export class SessionManager {
 
     const { stream, push, close } = createMessageStream();
 
-    // Send initial prompt — SDK needs at least one message to start
-    const now = new Date().toLocaleString("sv-SE", { timeZone: "America/Chicago", hour12: false });
+    // Send initial prompt if provided or for new sessions
+    // Resumed sessions don't need a prompt — they wait for user input
     if (options?.prompt) {
       push(makeUserMessage(options.prompt));
-    } else if (options?.resume) {
-      push(makeUserMessage(`Session resumed. Current time: ${now} CT.`));
-    } else {
+    } else if (!options?.resume) {
+      const now = new Date().toLocaleString("sv-SE", { timeZone: "America/Chicago", hour12: false });
       push(makeUserMessage(`Session started. Current time: ${now} CT. Awaiting instructions.`));
     }
 
@@ -192,11 +191,13 @@ export class SessionManager {
     const q = query({ prompt: stream, options: queryOptions });
     const messages: SDKMessage[] = [];
 
+    const isResuming = !!options?.resume;
+
     const session: SessionInfo = {
-      id: "", // filled on init message
+      id: isResuming ? options!.resume! : "", // known immediately for resumed sessions
       name,
       query: q,
-      status: "starting",
+      status: isResuming ? "running" : "starting",
       createdAt: new Date(),
       messages,
       isHub,
@@ -211,21 +212,26 @@ export class SessionManager {
     // Start consuming messages in background
     this.consumeMessages(session);
 
-    // Wait for init to get session ID
-    await this.waitForInit(session);
+    if (isResuming) {
+      // For resumed sessions, we already know the ID — no need to wait
+      this.sessions.set(session.id, session);
+      this.saveState();
+    } else {
+      // For new sessions, wait for init to get the session ID
+      await this.waitForInit(session);
+      this.sessions.set(session.id, session);
+      this.saveState();
 
-    this.sessions.set(session.id, session);
-    this.saveState();
-
-    // Set session display name
-    try {
-      await renameSession(session.id, name, { dir: options?.cwd ?? this.cwd });
-      console.log(`Session ${session.id}: renamed to "${name}"`);
-    } catch (err) {
-      console.error(`Session ${session.id}: failed to rename:`, err);
+      // Set session display name
+      try {
+        await renameSession(session.id, name, { dir: options?.cwd ?? this.cwd });
+        console.log(`Session ${session.id}: renamed to "${name}"`);
+      } catch (err) {
+        console.error(`Session ${session.id}: failed to rename:`, err);
+      }
     }
 
-    // Enable remote control only if requested (hub defaults to true, others false)
+    // Enable remote control only if requested
     if (remoteControl) {
       try {
         await (q as any).enableRemoteControl(true);
