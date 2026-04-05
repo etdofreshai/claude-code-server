@@ -401,12 +401,6 @@ app.get("/api/sessions/:sessionId/messages", (req, res) => {
             const hasToolResult = Array.isArray(content) && content.some((b: any) => b.type === "tool_result");
             if (hasToolResult) continue;
 
-            const text = typeof content === "string"
-              ? content
-              : Array.isArray(content)
-                ? content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n")
-                : null;
-
             // Extract image blocks if present
             let images: Array<{ mediaType: string; data: string }> | undefined;
             if (Array.isArray(content)) {
@@ -417,6 +411,20 @@ app.get("/api/sessions/:sessionId/messages", (req, res) => {
                   data: b.source.data,
                 }));
               }
+            }
+
+            // Extract text, filtering out SDK image metadata (e.g. "[Image: original 2048x2048...]")
+            let text: string | null;
+            if (typeof content === "string") {
+              text = content;
+            } else if (Array.isArray(content)) {
+              const textBlocks = content
+                .filter((b: any) => b.type === "text")
+                .filter((b: any) => !images || !b.text?.startsWith("[Image:"))
+                .map((b: any) => b.text);
+              text = textBlocks.length > 0 ? textBlocks.join("\n") : null;
+            } else {
+              text = null;
             }
 
             if (text || images) {
