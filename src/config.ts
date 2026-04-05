@@ -61,7 +61,7 @@ const DEFAULT_CONFIG: ServerConfig = {
     web: { enabled: true },
   },
   sessions: {
-    hubRemoteControl: true,
+    hubRemoteControl: false,
     defaultRemoteControl: false,
   },
 };

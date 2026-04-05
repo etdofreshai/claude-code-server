@@ -160,14 +160,18 @@ export class SessionManager {
     channel?: ChannelBinding;
   }): Promise<SessionInfo> {
     const isHub = options?.isHub ?? false;
-    const remoteControl = options?.remoteControl ?? (isHub ? true : false);
+    const remoteControl = options?.remoteControl ?? false;
     const name = options?.name ?? `session-${Date.now()}`;
 
     const { stream, push, close } = createMessageStream();
 
-    // Send initial prompt — required to initialize the session
-    const now = new Date().toLocaleString("sv-SE", { timeZone: "America/Chicago", hour12: false });
-    push(makeUserMessage(options?.prompt ?? `Server is up and ready. Current time: ${now} CT. Reply OK if you understand.`));
+    // Send initial prompt if provided (otherwise session waits for first message)
+    if (options?.prompt) {
+      push(makeUserMessage(options.prompt));
+    } else if (!options?.resume) {
+      // For new sessions without a prompt, send a minimal init
+      push(makeUserMessage("Session started. Awaiting instructions."));
+    }
 
     const queryOptions: Options = {
       ...this.defaultOptions,

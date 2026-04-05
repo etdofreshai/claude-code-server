@@ -616,19 +616,26 @@ httpServer.listen(PORT, async () => {
   });
 
   // Graceful shutdown
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) return; // prevent double shutdown
+    shuttingDown = true;
     console.log("\nGraceful shutdown initiated...");
     heartbeat.stop();
     jobManager.stop();
     await channelManager.stopAll();
     manager.shutdown();
     httpServer.close();
+    // Give child processes time to exit cleanly
+    console.log("Waiting for child processes to exit...");
+    await new Promise((r) => setTimeout(r, 3000));
     console.log("Shutdown complete");
     process.exit(0);
   };
 
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
+  process.on("beforeExit", shutdown);
 
   console.log("All systems initialized");
 });
