@@ -98,6 +98,12 @@
     </div>
   </div>
 
+  <!-- Image preview modal -->
+  <div id="image-modal" style="display:none" onclick="closeImagePreview()">
+    <img id="image-modal-img" src="" alt="Preview" onclick="event.stopPropagation()" />
+    <button id="image-modal-close" onclick="closeImagePreview()">&times;</button>
+  </div>
+
   <script>
     const API = '';
     let ws = null;
@@ -153,7 +159,7 @@
         if (msg.type === 'msg' && msg.room === currentRoom) {
           // Build data URLs from base64 images if present
           const imageUrls = msg.images?.map(img => `data:${img.mediaType};base64,${img.data}`);
-          appendMessage(msg.from, msg.text, msg.ts, undefined, imageUrls);
+          appendMessage(msg.from, msg.text, msg.ts, msg.msgType || undefined, imageUrls);
           // Show interrupt button when assistant is responding
           if (msg.from === 'assistant') {
             showInterrupt(true);
@@ -189,7 +195,9 @@
         container.innerHTML = '';
 
         for (const msg of data.messages) {
-          appendMessage(msg.from, msg.text, msg.ts, msg.type);
+          // Build data URLs from base64 images in history
+          const imageUrls = msg.images?.map(img => `data:${img.mediaType};base64,${img.data}`);
+          appendMessage(msg.from, msg.text, msg.ts, msg.type, imageUrls);
         }
       } catch (err) {
         container.innerHTML = '';
@@ -310,7 +318,7 @@
       let imageHtml = '';
       if (imageUrls && imageUrls.length > 0) {
         imageHtml = '<div class="msg-images">' +
-          imageUrls.map(url => `<img src="${url}" class="msg-image" onclick="window.open(this.src, '_blank')" />`).join('') +
+          imageUrls.map(url => `<img src="${url}" class="msg-image" onclick="openImagePreview(this.src)" />`).join('') +
           '</div>';
       }
 
@@ -325,6 +333,21 @@
       div.textContent = s;
       return div.innerHTML;
     }
+
+    function openImagePreview(src) {
+      document.getElementById('image-modal-img').src = src;
+      document.getElementById('image-modal').style.display = 'flex';
+    }
+
+    function closeImagePreview() {
+      document.getElementById('image-modal').style.display = 'none';
+      document.getElementById('image-modal-img').src = '';
+    }
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeImagePreview();
+    });
 
     // --- Image attachments ---
 

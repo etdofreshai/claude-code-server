@@ -384,7 +384,7 @@ app.get("/api/sessions/:sessionId/messages", (req, res) => {
     `${req.params.sessionId}.jsonl`
   );
 
-  const messages: Array<{ from: string; type: string; text: string; ts: string | null }> = [];
+  const messages: Array<{ from: string; type: string; text: string; ts: string | null; images?: Array<{ mediaType: string; data: string }> }> = [];
 
   try {
     if (existsSync(jsonlPath)) {
@@ -406,7 +406,22 @@ app.get("/api/sessions/:sessionId/messages", (req, res) => {
               : Array.isArray(content)
                 ? content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n")
                 : null;
-            if (text) messages.push({ from: "user", type: "text", text, ts: msg.timestamp ?? null });
+
+            // Extract image blocks if present
+            let images: Array<{ mediaType: string; data: string }> | undefined;
+            if (Array.isArray(content)) {
+              const imageBlocks = content.filter((b: any) => b.type === "image" && b.source?.type === "base64");
+              if (imageBlocks.length > 0) {
+                images = imageBlocks.map((b: any) => ({
+                  mediaType: b.source.media_type,
+                  data: b.source.data,
+                }));
+              }
+            }
+
+            if (text || images) {
+              messages.push({ from: "user", type: "text", text: text || "", ts: msg.timestamp ?? null, images });
+            }
 
           } else if (msg.type === "assistant") {
             const content = msg.message?.content;
@@ -648,6 +663,18 @@ manager.onAssistantMessage = (sessionId, text) => {
   webChannel.send(sessionId, text);
   // Also route to bound channels (telegram, discord, etc.)
   channelManager.sendToChannel(sessionId, text);
+};
+
+// Route tool use notifications to web channel
+manager.onToolUse = (sessionId, tools) => {
+  webChannel.broadcastToRoom(sessionId, {
+    type: "msg",
+    from: "assistant",
+    text: tools,
+    room: sessionId,
+    ts: new Date().toISOString(),
+    msgType: "tool",
+  });
 };
 
 httpServer.listen(PORT, async () => {

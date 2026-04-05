@@ -116,6 +116,7 @@ export class SessionManager {
   private hubSession: SessionInfo | null = null;
   private isShuttingDown = false;
   onAssistantMessage: ((sessionId: string, text: string) => void) | null = null;
+  onToolUse: ((sessionId: string, tools: string) => void) | null = null;
 
   constructor(cwd: string, defaultOptions: Partial<Options> = {}) {
     this.cwd = cwd;
@@ -343,16 +344,23 @@ export class SessionManager {
           console.log(`Session ${session.id}: result received`);
         }
 
-        // Notify listener of assistant text messages
-        if (message.type === "assistant" && this.onAssistantMessage && session.id) {
+        // Notify listener of assistant text and tool use messages
+        if (message.type === "assistant" && session.id) {
           const content = (message as any).message?.content;
           if (Array.isArray(content)) {
             const text = content
               .filter((b: any) => b.type === "text")
               .map((b: any) => b.text)
               .join("\n");
-            if (text) {
+            if (text && this.onAssistantMessage) {
               this.onAssistantMessage(session.id, text);
+            }
+
+            // Notify tool uses
+            const toolUses = content.filter((b: any) => b.type === "tool_use");
+            if (toolUses.length > 0 && this.onToolUse) {
+              const tools = toolUses.map((t: any) => t.name).join(", ");
+              this.onToolUse(session.id, tools);
             }
           }
         }

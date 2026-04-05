@@ -335,7 +335,46 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
   border-radius: 8px;
   cursor: pointer;
   border: 1px solid #30363d;
+  transition: opacity 0.15s;
 }
+.msg-image:hover { opacity: 0.8; }
+
+/* Image preview modal */
+#image-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  cursor: pointer;
+  padding: 2rem;
+}
+#image-modal-img {
+  max-width: 95%;
+  max-height: 95vh;
+  border-radius: 8px;
+  object-fit: contain;
+  cursor: default;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+#image-modal-close {
+  position: fixed;
+  top: 1rem;
+  right: 1.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #fff;
+  font-size: 2rem;
+  cursor: pointer;
+  padding: 0.2em 0.5em;
+  border-radius: 8px;
+  line-height: 1;
+  transition: background 0.15s;
+}
+#image-modal-close:hover { background: rgba(255, 255, 255, 0.2); }
 
 /* Chat form */
 #chat-form {
