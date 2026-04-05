@@ -1,12 +1,15 @@
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { query, renameSession, type Query, type SDKMessage, type SDKUserMessage, type Options } from "@anthropic-ai/claude-agent-sdk";
+import type { ChannelBinding } from "./channels/types.js";
 
 interface PersistedSession {
   id: string;
   name: string;
   isHub: boolean;
   createdAt: string;
+  remoteControl: boolean;
+  channel?: ChannelBinding;
 }
 
 export interface SessionInfo {
@@ -17,6 +20,8 @@ export interface SessionInfo {
   createdAt: Date;
   messages: SDKMessage[];
   isHub: boolean;
+  remoteControl: boolean;
+  channel?: ChannelBinding;
   sendMessage: (text: string) => void;
 }
 
@@ -87,6 +92,8 @@ export class SessionManager {
         name: s.name,
         isHub: s.isHub,
         createdAt: s.createdAt.toISOString(),
+        remoteControl: s.remoteControl,
+        channel: s.channel,
       }));
     try {
       writeFileSync(this.stateFile, JSON.stringify(persisted, null, 2));
@@ -116,6 +123,8 @@ export class SessionManager {
           name,
           resume: entry.id,
           isHub: entry.isHub,
+          remoteControl: entry.remoteControl,
+          channel: entry.channel,
         });
         if (entry.isHub) {
           this.hubSession = session;
@@ -146,7 +155,11 @@ export class SessionManager {
     prompt?: string;
     isHub?: boolean;
     cwd?: string;
+    remoteControl?: boolean;
+    channel?: ChannelBinding;
   }): Promise<SessionInfo> {
+    const isHub = options?.isHub ?? false;
+    const remoteControl = options?.remoteControl ?? (isHub ? true : false);
     const name = options?.name ?? `session-${Date.now()}`;
 
     const { stream, push, close } = createMessageStream();
@@ -179,7 +192,9 @@ export class SessionManager {
       status: "starting",
       createdAt: new Date(),
       messages,
-      isHub: options?.isHub ?? false,
+      isHub,
+      remoteControl,
+      channel: options?.channel,
       sendMessage: (text: string) => push(makeUserMessage(text)),
     };
 
@@ -203,12 +218,14 @@ export class SessionManager {
       console.error(`Session ${session.id}: failed to rename:`, err);
     }
 
-    // Enable remote control so session is accessible from claude.ai/code
-    try {
-      await (q as any).enableRemoteControl(true);
-      console.log(`Session ${session.id}: remote control enabled`);
-    } catch (err) {
-      console.error(`Session ${session.id}: failed to enable remote control:`, err);
+    // Enable remote control only if requested (hub defaults to true, others false)
+    if (remoteControl) {
+      try {
+        await (q as any).enableRemoteControl(true);
+        console.log(`Session ${session.id}: remote control enabled`);
+      } catch (err) {
+        console.error(`Session ${session.id}: failed to enable remote control:`, err);
+      }
     }
 
     console.log(`Session created: ${session.id} (${name})`);

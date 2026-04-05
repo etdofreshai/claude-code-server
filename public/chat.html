@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Chat — Claude Code Server</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="app">
+    <nav>
+      <a href="/">Dashboard</a>
+      <a href="/chat.html" class="active">Chat</a>
+    </nav>
+
+    <div id="session-picker" class="panel">
+      <h2>Select a Session</h2>
+      <div id="session-list"></div>
+    </div>
+
+    <div id="chat-view" class="panel" style="display:none">
+      <div id="chat-header">
+        <button id="back-btn" onclick="showPicker()">&larr; Back</button>
+        <span id="chat-session-name"></span>
+        <span id="chat-session-status" class="status"></span>
+      </div>
+      <div id="messages"></div>
+      <form id="chat-form">
+        <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" />
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const API = '';
+    let ws = null;
+    let currentRoom = null;
+
+    async function loadSessions() {
+      const res = await fetch(`${API}/api/sessions`);
+      const data = await res.json();
+      const list = document.getElementById('session-list');
+      list.innerHTML = '';
+
+      for (const s of data.sessions) {
+        const div = document.createElement('div');
+        div.className = 'session-card';
+        div.innerHTML = `
+          <div class="session-name">${s.name}</div>
+          <div class="session-meta">
+            <span class="status ${s.status}">${s.status}</span>
+            <span>${s.messageCount} msgs</span>
+            <code>${s.id.slice(0, 8)}</code>
+          </div>
+        `;
+        div.onclick = () => joinSession(s.id, s.name, s.status);
+        list.appendChild(div);
+      }
+    }
+
+    function connectWS() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+      ws.onopen = () => console.log('WS connected');
+      ws.onclose = () => {
+        console.log('WS disconnected, reconnecting...');
+        setTimeout(connectWS, 2000);
+      };
+
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'msg' && msg.room === currentRoom) {
+          appendMessage(msg.from, msg.text, msg.ts);
+        }
+      };
+    }
+
+    function joinSession(id, name, status) {
+      currentRoom = id;
+      document.getElementById('session-picker').style.display = 'none';
+      document.getElementById('chat-view').style.display = 'flex';
+      document.getElementById('chat-session-name').textContent = name;
+      const statusEl = document.getElementById('chat-session-status');
+      statusEl.textContent = status;
+      statusEl.className = `status ${status}`;
+      document.getElementById('messages').innerHTML = '';
+      document.getElementById('chat-input').focus();
+
+      // Join the room via WebSocket
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'join', room: id, sessionId: id }));
+      }
+    }
+
+    function showPicker() {
+      currentRoom = null;
+      document.getElementById('session-picker').style.display = 'block';
+      document.getElementById('chat-view').style.display = 'none';
+      loadSessions();
+    }
+
+    function appendMessage(from, text, ts) {
+      const div = document.createElement('div');
+      div.className = `message ${from}`;
+      div.innerHTML = `<div class="msg-text">${escapeHtml(text)}</div><div class="msg-time">${new Date(ts).toLocaleTimeString()}</div>`;
+      const container = document.getElementById('messages');
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    document.getElementById('chat-form').onsubmit = (e) => {
+      e.preventDefault();
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text || !currentRoom) return;
+
+      // Send via WebSocket
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'msg', text }));
+      }
+
+      appendMessage('user', text, new Date().toISOString());
+      input.value = '';
+    };
+
+    // Init
+    loadSessions();
+    connectWS();
+  </script>
+</body>
+</html>

@@ -20,6 +20,7 @@ COPY package.json tsconfig.json ./
 RUN npm install
 COPY .git/ .git/
 COPY src/ src/
+COPY public/ public/
 RUN npm run build && \
     sed -i "s|__BUILD_DATETIME__|$(date -Iseconds)|g" dist/server.js && \
     sed -i "s|__BUILD_SHA__|$(git rev-parse HEAD 2>/dev/null || echo unknown)|g" dist/server.js && \
@@ -41,5 +42,7 @@ ENV GH_TOKEN_ETDOFRESH=""
 ENV GH_TOKEN_ETDOFRESHAI=""
 
 EXPOSE 3000
+
+COPY prompts/ /home/claude/workspace/prompts/
 
 CMD ["node", "/app/dist/server.js"]

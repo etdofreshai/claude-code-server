@@ -1,5 +1,14 @@
 import express from "express";
+import { createServer } from "http";
+import { join } from "path";
 import { SessionManager } from "./session-manager.js";
+import { Config } from "./config.js";
+import { Heartbeat } from "./heartbeat.js";
+import { JobManager } from "./jobs.js";
+import { ChannelManager } from "./channels/manager.js";
+import { WebChannel } from "./channels/web.js";
+import { TelegramChannel } from "./channels/telegram.js";
+import { DiscordChannel } from "./channels/discord.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR ?? "/home/claude/workspace";
@@ -8,19 +17,59 @@ const BUILD_SHA = "__BUILD_SHA__";
 const BUILD_DATETIME = "__BUILD_DATETIME__";
 const START_TIME = new Date();
 
+// --- Initialize ---
+
+const config = new Config(WORKSPACE_DIR);
+const manager = new SessionManager(WORKSPACE_DIR);
+const heartbeat = new Heartbeat(config.get().heartbeat, WORKSPACE_DIR);
+const jobManager = new JobManager(config.get().jobs, WORKSPACE_DIR);
+const channelManager = new ChannelManager(manager);
+
+// Web channel (always on)
+const webChannel = new WebChannel();
+channelManager.registerChannel(webChannel);
+
+// Telegram channel (if configured)
+const telegramConfig = config.get().channels.telegram;
+if (telegramConfig?.token) {
+  channelManager.registerChannel(new TelegramChannel(telegramConfig));
+}
+
+// Discord channel (if configured)
+const discordConfig = config.get().channels.discord;
+if (discordConfig?.token) {
+  channelManager.registerChannel(new DiscordChannel(discordConfig));
+}
+
+// Config hot-reload
+config.onChange((newConfig) => {
+  heartbeat.updateConfig(newConfig.heartbeat);
+  jobManager.updateConfig(newConfig.jobs);
+});
+
+// --- Express App ---
+
 const app = express();
 app.use(express.json());
 
-const manager = new SessionManager(WORKSPACE_DIR);
+// Serve static frontend
+app.use(express.static(join(import.meta.dirname, "../public")));
 
 // --- Landing Page ---
 
-function formatSession(s: { id: string; name: string; status: string; createdAt: Date; messageCount: number }) {
+function formatSession(s: { id: string; name: string; status: string; createdAt: Date; messageCount: number; remoteControl: boolean; channel?: { type: string; targetId: string } }) {
+  const channelBadge = s.channel
+    ? `<span class="badge channel">${s.channel.type}:${s.channel.targetId}</span>`
+    : "";
+  const rcBadge = s.remoteControl
+    ? `<span class="badge rc">RC</span>`
+    : "";
   return `<tr>
     <td><code>${s.id}</code></td>
     <td>${s.name}</td>
     <td><span class="status ${s.status}">${s.status}</span></td>
     <td>${s.messageCount}</td>
+    <td>${channelBadge}${rcBadge}</td>
     <td>${new Date(s.createdAt).toISOString()}</td>
   </tr>`;
 }
@@ -33,17 +82,29 @@ app.get("/", (_req, res) => {
     status: s.status,
     createdAt: s.createdAt,
     messageCount: s.messages.length,
+    remoteControl: s.remoteControl,
+    channel: s.channel,
   }));
   const uptime = Math.floor((Date.now() - START_TIME.getTime()) / 1000);
   const activeWorkers = workers.filter((s) => s.status === "running").length;
+  const hbStatus = heartbeat.getStatus();
+  const jobs = jobManager.listJobs();
 
   const hubHtml = hub
-    ? formatSession({ id: hub.id, name: hub.name, status: hub.status, createdAt: hub.createdAt, messageCount: hub.messages.length })
-    : `<tr><td colspan="5" style="text-align:center;color:#888">Not started</td></tr>`;
+    ? formatSession({ id: hub.id, name: hub.name, status: hub.status, createdAt: hub.createdAt, messageCount: hub.messages.length, remoteControl: hub.remoteControl, channel: hub.channel })
+    : `<tr><td colspan="6" style="text-align:center;color:#888">Not started</td></tr>`;
 
   const workerRows = workers.length
     ? workers.map(formatSession).join("")
-    : `<tr><td colspan="5" style="text-align:center;color:#888">No sessions</td></tr>`;
+    : `<tr><td colspan="6" style="text-align:center;color:#888">No sessions</td></tr>`;
+
+  const heartbeatHtml = hbStatus.enabled
+    ? `<div class="card"><div class="label">Heartbeat</div><div class="value running">Every ${hbStatus.intervalMinutes}m${hbStatus.nextAt ? ` · Next: ${new Date(hbStatus.nextAt).toLocaleTimeString()}` : ""}</div></div>`
+    : `<div class="card"><div class="label">Heartbeat</div><div class="value ended">Disabled</div></div>`;
+
+  const jobsHtml = jobs.length
+    ? jobs.map((j) => `<tr><td>${j.name}</td><td><code>${j.schedule}</code></td><td>${j.session}</td><td>${j.nextAt ? new Date(j.nextAt).toLocaleTimeString() : "—"}</td></tr>`).join("")
+    : `<tr><td colspan="4" style="text-align:center;color:#888">No jobs</td></tr>`;
 
   res.type("html").send(`<!DOCTYPE html>
 <html>
@@ -71,22 +132,25 @@ app.get("/", (_req, res) => {
     .status.running { background: #0d2818; }
     .status.starting { background: #2a1f00; }
     .status.ended { background: #1c1c1c; }
+    .badge { display: inline-block; padding: 0.15em 0.5em; border-radius: 8px; font-size: 0.75rem; margin-right: 0.25rem; }
+    .badge.channel { background: #1a3a5c; color: #58a6ff; }
+    .badge.rc { background: #2a1f00; color: #d29922; }
+    nav { margin-bottom: 1.5rem; }
+    nav a { color: #58a6ff; text-decoration: none; margin-right: 1rem; }
+    nav a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <h1>Claude Code Server</h1>
+  <nav><a href="/">Dashboard</a><a href="/chat.html">Chat</a></nav>
   <div class="meta">
     <div class="card">
       <div class="label">Status</div>
       <div class="value running">Running</div>
     </div>
     <div class="card">
-      <div class="label">Build SHA</div>
-      <div class="value">${BUILD_SHA}</div>
-    </div>
-    <div class="card">
-      <div class="label">Build Date</div>
-      <div class="value">${BUILD_DATETIME}</div>
+      <div class="label">Build</div>
+      <div class="value">${BUILD_SHA.slice(0, 7)} · ${BUILD_DATETIME}</div>
     </div>
     <div class="card">
       <div class="label">Uptime</div>
@@ -96,16 +160,22 @@ app.get("/", (_req, res) => {
       <div class="label">Active Sessions</div>
       <div class="value">${activeWorkers} / ${workers.length}</div>
     </div>
+    ${heartbeatHtml}
   </div>
   <h2>Hub Session</h2>
   <table>
-    <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Messages</th><th>Created</th></tr></thead>
+    <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Messages</th><th>Channels</th><th>Created</th></tr></thead>
     <tbody>${hubHtml}</tbody>
   </table>
   <h2>Worker Sessions</h2>
   <table>
-    <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Messages</th><th>Created</th></tr></thead>
+    <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Messages</th><th>Channels</th><th>Created</th></tr></thead>
     <tbody>${workerRows}</tbody>
+  </table>
+  <h2>Cron Jobs</h2>
+  <table>
+    <thead><tr><th>Name</th><th>Schedule</th><th>Session</th><th>Next</th></tr></thead>
+    <tbody>${jobsHtml}</tbody>
   </table>
 </body>
 </html>`);
@@ -118,6 +188,94 @@ app.get("/api/health", (_req, res) => {
     status: "ok",
     sessions: manager.getActiveSessions().length,
   });
+});
+
+// --- State (combined endpoint) ---
+
+app.get("/api/state", (_req, res) => {
+  const sessions = manager.getAllSessions().map((s) => ({
+    id: s.id,
+    name: s.name,
+    status: s.status,
+    createdAt: s.createdAt,
+    messageCount: s.messages.length,
+    isHub: s.isHub,
+    remoteControl: s.remoteControl,
+    channel: s.channel,
+  }));
+
+  res.json({
+    uptime: Math.floor((Date.now() - START_TIME.getTime()) / 1000),
+    heartbeat: heartbeat.getStatus(),
+    jobs: jobManager.listJobs(),
+    sessions,
+    channels: channelManager.getAllBindings(),
+  });
+});
+
+// --- Heartbeat ---
+
+app.get("/api/heartbeat", (_req, res) => {
+  res.json(heartbeat.getStatus());
+});
+
+app.post("/api/heartbeat/config", (req, res) => {
+  const newConfig = { ...config.get().heartbeat, ...req.body };
+  heartbeat.updateConfig(newConfig);
+  res.json(heartbeat.getStatus());
+});
+
+app.post("/api/heartbeat/trigger", (_req, res) => {
+  heartbeat.trigger();
+  res.json({ triggered: true });
+});
+
+// --- Jobs ---
+
+app.get("/api/jobs", (_req, res) => {
+  res.json({ jobs: jobManager.listJobs() });
+});
+
+app.get("/api/jobs/:name", (req, res) => {
+  const job = jobManager.getJob(req.params.name);
+  if (!job) return res.status(404).json({ error: "Job not found" });
+  res.json(job);
+});
+
+app.post("/api/jobs", (req, res) => {
+  try {
+    const { name, schedule, prompt, session, recurring, notify } = req.body;
+    if (!name || !schedule || !prompt) {
+      return res.status(400).json({ error: "name, schedule, and prompt are required" });
+    }
+    jobManager.createJob(name, schedule, prompt, { session, recurring, notify });
+    res.json({ created: name });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.delete("/api/jobs/:name", (req, res) => {
+  try {
+    jobManager.deleteJob(req.params.name);
+    res.json({ deleted: req.params.name });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.post("/api/jobs/:name/trigger", (req, res) => {
+  try {
+    jobManager.triggerJob(req.params.name);
+    res.json({ triggered: req.params.name });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.post("/api/jobs/reload", (_req, res) => {
+  jobManager.reload();
+  res.json({ reloaded: true, jobs: jobManager.listJobs() });
 });
 
 // --- All Sessions ---
@@ -160,19 +318,29 @@ app.get("/api/sessions", (_req, res) => {
     status: s.status,
     createdAt: s.createdAt,
     messageCount: s.messages.length,
+    remoteControl: s.remoteControl,
+    channel: s.channel,
   }));
   res.json({ sessions });
 });
 
 app.post("/api/sessions/new", async (req, res) => {
   try {
-    const { name, resume, prompt, cwd } = req.body ?? {};
+    const { name, resume, prompt, cwd, remoteControl, channel } = req.body ?? {};
     const session = await manager.createSession({
       name,
       cwd,
       resume,
       prompt,
+      remoteControl,
+      channel,
     });
+
+    // Bind to channel if specified
+    if (channel) {
+      channelManager.bind(session.id, channel);
+    }
+
     res.json({ id: session.id, name: session.name, status: session.status });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -190,12 +358,27 @@ app.get("/api/sessions/:sessionId", (req, res) => {
     status: session.status,
     createdAt: session.createdAt,
     messageCount: session.messages.length,
+    remoteControl: session.remoteControl,
+    channel: session.channel,
   });
+});
+
+app.post("/api/sessions/:sessionId/message", (req, res) => {
+  const session = manager.getSession(req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found" });
+  if (session.status !== "running") return res.status(400).json({ error: "Session not running" });
+
+  const { text } = req.body ?? {};
+  if (!text) return res.status(400).json({ error: "text is required" });
+
+  session.sendMessage(text);
+  res.json({ sent: true });
 });
 
 app.post("/api/sessions/:sessionId/end", async (req, res) => {
   try {
     await manager.endSession(req.params.sessionId);
+    channelManager.unbind(req.params.sessionId);
     res.json({ ended: req.params.sessionId });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -204,13 +387,20 @@ app.post("/api/sessions/:sessionId/end", async (req, res) => {
 
 app.post("/api/sessions/:sessionId/resume", async (req, res) => {
   try {
-    const { name, prompt, cwd } = req.body ?? {};
+    const { name, prompt, cwd, remoteControl, channel } = req.body ?? {};
     const session = await manager.createSession({
       name,
       cwd,
       resume: req.params.sessionId,
       prompt,
+      remoteControl,
+      channel,
     });
+
+    if (channel) {
+      channelManager.bind(session.id, channel);
+    }
+
     res.json({ id: session.id, name: session.name, status: session.status });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -235,20 +425,50 @@ app.post("/api/sessions/:sessionId/restart", async (req, res) => {
   }
 });
 
+app.post("/api/sessions/:sessionId/bind", (req, res) => {
+  const session = manager.getSession(req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found" });
+
+  const { channel } = req.body ?? {};
+  if (!channel?.type || !channel?.targetId) {
+    return res.status(400).json({ error: "channel.type and channel.targetId required" });
+  }
+
+  channelManager.bind(req.params.sessionId, channel);
+  session.channel = channel;
+  res.json({ bound: true, channel });
+});
+
+app.post("/api/sessions/:sessionId/unbind", (req, res) => {
+  const session = manager.getSession(req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found" });
+
+  channelManager.unbind(req.params.sessionId);
+  session.channel = undefined;
+  res.json({ unbound: true });
+});
+
 // --- Server ---
 
 app.post("/api/server/restart", async (_req, res) => {
   res.json({ status: "restarting" });
   console.log("Server restart requested via API");
-  // Exit with 0 — Docker restart policy will bring it back
   setTimeout(() => process.exit(0), 500);
 });
 
 // --- Start ---
 
-app.listen(PORT, async () => {
+const httpServer = createServer(app);
+
+// Attach WebSocket to the HTTP server
+webChannel.attachToServer(httpServer);
+
+httpServer.listen(PORT, async () => {
   console.log(`claude-code-server listening on :${PORT}`);
   console.log(`Workspace: ${WORKSPACE_DIR}`);
+
+  // Start channels
+  await channelManager.startAll();
 
   // Resolve hub name with current datetime
   const hubName = HUB_NAME_TEMPLATE.replace("${DATETIME}", new Date().toLocaleString("sv-SE", { timeZone: "America/Chicago", hour12: false }).replace(/[-: ]/g, (m) => m === " " ? "T" : ""));
@@ -262,7 +482,43 @@ app.listen(PORT, async () => {
     } else {
       console.log(`Hub session restored: ${manager.getHub()!.id}`);
     }
+
+    // Restore channel bindings for all sessions
+    for (const session of manager.getAllSessions()) {
+      if (session.channel) {
+        channelManager.bind(session.id, session.channel);
+      }
+    }
   } catch (err) {
     console.error("Failed to initialize sessions:", err);
   }
+
+  // Start heartbeat — sends to hub session
+  heartbeat.start((prompt) => {
+    const hub = manager.getHub();
+    if (hub && hub.status === "running") {
+      hub.sendMessage(prompt);
+    }
+  });
+
+  // Start job manager — executes by sending prompt to target session
+  jobManager.start((jobName, prompt, sessionTarget) => {
+    let session;
+    if (sessionTarget === "hub") {
+      session = manager.getHub();
+    } else {
+      // Try by name first, then by ID
+      session = manager.getAllSessions().find((s) => s.name === sessionTarget) ??
+                manager.getSession(sessionTarget);
+    }
+
+    if (session && session.status === "running") {
+      console.log(`Job "${jobName}" → session ${session.id} (${session.name})`);
+      session.sendMessage(prompt);
+    } else {
+      console.error(`Job "${jobName}": target session "${sessionTarget}" not found or not running`);
+    }
+  });
+
+  console.log("All systems initialized");
 });
