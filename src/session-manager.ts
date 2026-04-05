@@ -70,6 +70,30 @@ function createMessageStream() {
   };
 }
 
+function formatToolSummary(tool: any): string {
+  const name = tool.name || "Unknown";
+  const input = tool.input || {};
+
+  switch (name) {
+    case "Bash":
+      return input.description || `Bash: ${(input.command || "").slice(0, 60)}`;
+    case "Read":
+      return `Read: ${input.file_path || ""}`;
+    case "Edit":
+      return `Edit: ${input.file_path || ""}`;
+    case "Write":
+      return `Write: ${input.file_path || ""}`;
+    case "Glob":
+      return `Glob: ${input.pattern || ""}`;
+    case "Grep":
+      return `Grep: ${input.pattern || ""} ${input.path ? "in " + input.path : ""}`.trim();
+    case "Agent":
+      return `Agent: ${input.description || input.subagent_type || ""}`;
+    default:
+      return input.description || input.file_path || name;
+  }
+}
+
 interface ImageAttachment {
   mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
   data: string; // base64-encoded
@@ -400,10 +424,10 @@ export class SessionManager {
               this.onAssistantMessage(session.id, text);
             }
 
-            // Notify tool uses
+            // Notify tool uses with details
             const toolUses = content.filter((b: any) => b.type === "tool_use");
             if (toolUses.length > 0 && this.onToolUse) {
-              const tools = toolUses.map((t: any) => t.name).join(", ");
+              const tools = toolUses.map((t: any) => formatToolSummary(t)).join(", ");
               this.onToolUse(session.id, tools);
             }
           }

@@ -471,11 +471,35 @@ app.get("/api/sessions/:sessionId/messages", (req, res) => {
               messages.push({ from: "assistant", type: "text", text: textParts.join("\n"), ts: null });
             }
 
-            // Note tool uses (collapsed summary)
+            // Note tool uses with details (description, file path, etc.)
             const toolUses = content.filter((b: any) => b.type === "tool_use");
-            if (toolUses.length > 0) {
-              const tools = toolUses.map((t: any) => t.name).join(", ");
-              messages.push({ from: "assistant", type: "tool", text: tools, ts: null });
+            for (const t of toolUses) {
+              const name = t.name || "Unknown";
+              const input = t.input || {};
+              let detail = "";
+              switch (name) {
+                case "Bash":
+                  detail = input.description || `${(input.command || "").slice(0, 80)}`;
+                  break;
+                case "Read":
+                case "Edit":
+                case "Write":
+                  detail = input.file_path || "";
+                  break;
+                case "Glob":
+                  detail = input.pattern || "";
+                  break;
+                case "Grep":
+                  detail = `${input.pattern || ""} ${input.path ? "in " + input.path : ""}`.trim();
+                  break;
+                case "Agent":
+                  detail = input.description || input.subagent_type || "";
+                  break;
+                default:
+                  detail = input.description || input.file_path || "";
+              }
+              const text = detail ? `${name}: ${detail}` : name;
+              messages.push({ from: "assistant", type: "tool", text, ts: null });
             }
           }
         } catch { /* skip unparseable lines */ }
