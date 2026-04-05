@@ -453,6 +453,13 @@ export class SessionManager {
   shutdown(): void {
     console.log("Shutting down all sessions...");
     this.isShuttingDown = true;
+
+    // Save state FIRST — before closing queries, because query.close() can
+    // synchronously resolve the consumeMessages iterator, which sets
+    // session.status = "ended". If we save after closing, all sessions
+    // would be filtered out by saveState()'s status !== "ended" check.
+    this.saveState();
+
     for (const session of this.getAllSessions()) {
       if (session.status === "ended") continue;
       try {
@@ -463,8 +470,6 @@ export class SessionManager {
         console.error(`Session ${session.id}: failed to close:`, err);
       }
     }
-    // Save state BEFORE marking ended, so they can be restored
-    this.saveState();
   }
 
   async restartSession(sessionId: string): Promise<SessionInfo> {
