@@ -126,7 +126,12 @@
             <button type="button" class="sendto-attach-btn" onclick="document.getElementById('sendto-file-input').click()">&#x1f5bc;&#xfe0f; Attach Image</button>
             <input type="file" id="sendto-file-input" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden />
           </div>
-          <p class="restore-hint" style="margin-top:0.5rem">Recent conversation context from the current session will be included automatically.</p>
+          <label class="add-label" style="margin-top:0.75rem">Context Mode</label>
+          <div class="sendto-mode-toggle">
+            <button type="button" class="sendto-mode-btn active" data-mode="recent" onclick="setSendToMode('recent')">Last 20 Messages</button>
+            <button type="button" class="sendto-mode-btn" data-mode="summary" onclick="setSendToMode('summary')">AI Summary</button>
+          </div>
+          <p class="restore-hint" id="sendto-mode-hint" style="margin-top:0.4rem">The last 20 messages from this session will be included as context.</p>
           <div class="add-actions">
             <button onclick="closeSendToModal()" class="add-cancel-btn">Cancel</button>
             <button onclick="sendToWorkspace()" id="sendto-submit-btn" class="restore-action-btn">Send</button>
@@ -776,11 +781,24 @@
     // --- Send to Workspace ---
 
     let sendToImages = [];
+    let sendToMode = 'recent';
+
+    function setSendToMode(mode) {
+      sendToMode = mode;
+      document.querySelectorAll('.sendto-mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+      });
+      document.getElementById('sendto-mode-hint').textContent = mode === 'summary'
+        ? 'An AI-generated summary of this session will be created and sent. This may take a moment.'
+        : 'The last 20 messages from this session will be included as context.';
+    }
 
     async function openSendToModal() {
       document.getElementById('sendto-modal').style.display = 'flex';
       document.getElementById('sendto-text').value = '';
       sendToImages = [];
+      sendToMode = 'recent';
+      setSendToMode('recent');
       renderSendToImages();
 
       // Populate target dropdown with other sessions
@@ -864,17 +882,21 @@
 
       const btn = document.getElementById('sendto-submit-btn');
       btn.disabled = true;
-      btn.textContent = 'Sending...';
+      btn.textContent = sendToMode === 'summary' ? 'Summarizing...' : 'Sending...';
 
       try {
         const images = sendToImages.length > 0
           ? sendToImages.map(img => ({ mediaType: img.mediaType, data: img.data }))
           : undefined;
 
+        if (sendToMode === 'summary') {
+          btn.innerHTML = '<span class="btn-spinner"></span> Summarizing...';
+        }
+
         const res = await fetch(`${API}/api/sessions/${currentSessionId}/send-to`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ targetSessionId: targetId, text, images }),
+          body: JSON.stringify({ targetSessionId: targetId, text, images, mode: sendToMode }),
         });
         const data = await res.json();
 

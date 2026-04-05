@@ -615,49 +615,108 @@ app.post("/api/sessions/:sessionId/unbind", (req, res) => {
 
 // --- Send to Workspace ---
 
+// Helper: extract text from SDK message content
+function extractMessageText(msg: any): string {
+  const content = msg.message?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((b: any) => b.type === "text")
+      .map((b: any) => b.text)
+      .join("\n");
+  }
+  return "";
+}
+
+// Helper: read recent messages formatted as context
+async function getRecentContext(sessionId: string, sessionName: string): Promise<string> {
+  const msgs = await getSessionMessages(sessionId, { dir: WORKSPACE_DIR, limit: 20 });
+  const lines: string[] = [];
+  for (const msg of msgs) {
+    if (msg.type === "system") continue;
+    const msgText = extractMessageText(msg);
+    if (!msgText) continue;
+    const role = msg.type === "user" ? "User" : "Assistant";
+    lines.push(`${role}: ${msgText}`);
+  }
+  if (lines.length > 0) {
+    return `[Context from "${sessionName}" — last ${lines.length} messages]:\n${lines.join("\n\n")}`;
+  }
+  return "";
+}
+
+// Summarize a session by asking it to produce a summary
+app.post("/api/sessions/:sessionId/summarize", async (req, res) => {
+  const session = manager.getSession(req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found" });
+  if (session.status !== "running") return res.status(400).json({ error: "Session not running" });
+
+  // Send summarization prompt to the session and collect the response
+  const summaryPrompt = "Please provide a concise summary of our conversation so far. Focus on: what tasks were discussed, what was accomplished, what's in progress, and any key decisions made. Format it as a brief, readable summary that could be shared with another workspace for context. Do NOT use any tools — just respond with the summary text.";
+
+  // Listen for the next assistant message from this session
+  const summaryPromise = new Promise<string>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Summary timed out after 60s")), 60000);
+    const originalCallback = manager.onAssistantMessage;
+
+    manager.onAssistantMessage = (sid, text) => {
+      // Forward to original handler (web channel, etc.)
+      if (originalCallback) originalCallback(sid, text);
+
+      // Capture summary from the source session
+      if (sid === req.params.sessionId) {
+        clearTimeout(timeout);
+        manager.onAssistantMessage = originalCallback;
+        resolve(text);
+      }
+    };
+  });
+
+  session.sendMessage(summaryPrompt);
+
+  try {
+    const summary = await summaryPromise;
+    res.json({ summary });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 app.post("/api/sessions/:sessionId/send-to", async (req, res) => {
   const sourceSession = manager.getSession(req.params.sessionId);
   if (!sourceSession) return res.status(404).json({ error: "Source session not found" });
 
-  const { targetSessionId, text, images } = req.body ?? {};
+  const { targetSessionId, text, images, mode } = req.body ?? {};
   if (!targetSessionId) return res.status(400).json({ error: "targetSessionId is required" });
 
   const targetSession = manager.getSession(targetSessionId);
   if (!targetSession) return res.status(404).json({ error: "Target session not found" });
   if (targetSession.status !== "running") return res.status(400).json({ error: "Target session not running" });
 
-  // Read recent messages from source session for context
+  // Build context based on mode
   let contextBlock = "";
   try {
-    const msgs = await getSessionMessages(req.params.sessionId, { dir: WORKSPACE_DIR, limit: 20 });
-    const lines: string[] = [];
-    for (const msg of msgs) {
-      if (msg.type === "system") continue;
-      const content = (msg.message as any)?.content;
-      let msgText = "";
-      if (typeof content === "string") {
-        msgText = content;
-      } else if (Array.isArray(content)) {
-        msgText = content
-          .filter((b: any) => b.type === "text")
-          .map((b: any) => b.text)
-          .join("\n");
+    if (mode === "summary") {
+      // Ask the source session to summarize, then use that
+      const summaryRes = await fetch(`http://localhost:${PORT}/api/sessions/${req.params.sessionId}/summarize`, {
+        method: "POST",
+      });
+      const summaryData = await summaryRes.json();
+      if (summaryData.summary) {
+        contextBlock = `[Summary from "${sourceSession.name}"]:\n${summaryData.summary}`;
       }
-      if (!msgText) continue;
-      const role = msg.type === "user" ? "User" : "Assistant";
-      // Truncate long messages in context
-      const truncated = msgText.length > 500 ? msgText.slice(0, 500) + "..." : msgText;
-      lines.push(`${role}: ${truncated}`);
-    }
-    if (lines.length > 0) {
-      contextBlock = `[Context from "${sourceSession.name}"]:\n${lines.join("\n\n")}\n\n`;
+    } else {
+      // Default: include recent messages (no truncation)
+      contextBlock = await getRecentContext(req.params.sessionId, sourceSession.name);
     }
   } catch (err) {
-    console.error("Failed to read source session messages:", err);
+    console.error("Failed to build context:", err);
     // Continue without context rather than failing
   }
 
-  const fullMessage = `${contextBlock}[Request]:\n${text || ""}`;
+  const fullMessage = contextBlock
+    ? `${contextBlock}\n\n[Request]:\n${text || ""}`
+    : `[Request from "${sourceSession.name}"]:\n${text || ""}`;
 
   // Convert images if present
   const imageAttachments = images?.map((img: any) => ({
