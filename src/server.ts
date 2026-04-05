@@ -639,6 +639,44 @@ app.post("/api/sessions/:sessionId/unbind", (req, res) => {
   res.json({ unbound: true });
 });
 
+// --- Voice Transcription ---
+
+app.post("/api/transcribe", express.raw({ type: "*/*", limit: "25mb" }), async (req, res) => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: "OPENAI_API_KEY not configured" });
+  }
+
+  try {
+    // Build form data for OpenAI API
+    const formData = new FormData();
+    const audioBlob = new Blob([req.body], { type: "audio/webm" });
+    formData.append("file", audioBlob, "audio.webm");
+    formData.append("model", "gpt-4o-mini-transcribe");
+    formData.append("response_format", "text");
+
+    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error("Transcription failed:", error);
+      return res.status(500).json({ error: "Transcription failed" });
+    }
+
+    const text = await response.text();
+    res.json({ text: text.trim() });
+  } catch (err) {
+    console.error("Transcription error:", err);
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 // --- Send to Workspace ---
 
 // Helper: extract text from SDK message content

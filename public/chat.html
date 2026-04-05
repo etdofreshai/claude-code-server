@@ -58,8 +58,33 @@
         <input type="text" id="chat-input" placeholder="Type a message or paste an image..." autocomplete="off" />
         <button type="button" id="interrupt-btn" onclick="interruptSession()" style="display:none">Stop</button>
         <button type="submit" id="send-btn">Send</button>
+        <button type="button" id="mic-btn" title="Hold to record">🎙️</button>
       </form>
     </div>
+      <!-- Voice recording overlay -->
+      <div id="voice-overlay" class="hidden">
+        <div id="voice-cancel-zone">
+          <span>✕ Cancel</span>
+        </div>
+        <div id="voice-info">
+          <div id="voice-timer">0:00</div>
+          <div id="voice-status">Release to send</div>
+        </div>
+        <div id="voice-lock-zone">
+          <span id="voice-lock-icon">🔒</span>
+          <span>Lock</span>
+        </div>
+      </div>
+      <div id="voice-locked-bar" class="hidden">
+        <div class="voice-locked-left">
+          <span class="voice-recording-dot"></span>
+          <span id="voice-locked-timer">0:00</span>
+        </div>
+        <div class="voice-locked-right">
+          <button id="voice-cancel-btn" onclick="cancelRecording()">Cancel</button>
+          <button id="voice-send-btn" onclick="stopAndSendRecording()">Send</button>
+        </div>
+      </div>
     <!-- Add workspace modal -->
     <div id="add-modal" style="display:none">
       <div class="restore-backdrop" onclick="closeAddModal()"></div>
@@ -526,6 +551,7 @@
       // Render locally with image previews
       appendMessage('user', text, new Date().toISOString(), undefined, pendingImages.map(img => img.dataUrl));
       input.value = '';
+      updateSendMicVisibility();
       clearImages();
       showInterrupt(true);
     };
@@ -922,6 +948,205 @@
         setTimeout(() => { btn.textContent = 'Send'; btn.disabled = false; btn.style.background = ''; }, 2000);
       }
     }
+
+    // --- Voice Recording ---
+
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let recordingStartTime = null;
+    let timerInterval = null;
+    let isRecording = false;
+    let isLocked = false;
+    let startY = 0;
+    let startX = 0;
+
+    const micBtn = document.getElementById('mic-btn');
+    const sendBtn = document.getElementById('send-btn');
+    const chatInput = document.getElementById('chat-input');
+
+    // Toggle mic/send button visibility based on input content
+    function updateSendMicVisibility() {
+      const hasContent = chatInput.value.trim() || pendingImages.length > 0;
+      sendBtn.style.display = hasContent ? 'inline-block' : 'none';
+      micBtn.style.display = hasContent ? 'none' : 'inline-block';
+    }
+    chatInput.addEventListener('input', updateSendMicVisibility);
+    // Call once on init
+    updateSendMicVisibility();
+
+    // Also update after clearing images or sending
+    const origClearImages = clearImages;
+    clearImages = function() { origClearImages(); updateSendMicVisibility(); };
+
+    function formatTimer(seconds) {
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+
+    function startTimer() {
+      recordingStartTime = Date.now();
+      updateTimerDisplay();
+      timerInterval = setInterval(updateTimerDisplay, 1000);
+    }
+
+    function updateTimerDisplay() {
+      const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+      const display = formatTimer(elapsed);
+      document.getElementById('voice-timer').textContent = display;
+      document.getElementById('voice-locked-timer').textContent = display;
+    }
+
+    function stopTimer() {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+
+    async function startRecording() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        };
+
+        mediaRecorder.start();
+        isRecording = true;
+        isLocked = false;
+        startTimer();
+        document.getElementById('voice-overlay').classList.remove('hidden');
+        document.getElementById('voice-status').textContent = 'Release to send';
+        document.getElementById('voice-lock-icon').textContent = '🔒';
+      } catch (err) {
+        console.error('Microphone access denied:', err);
+      }
+    }
+
+    function stopAndSendRecording() {
+      if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        mediaRecorder.stream.getTracks().forEach(t => t.stop());
+        isRecording = false;
+        isLocked = false;
+        stopTimer();
+        hideRecordingUI();
+
+        // Show transcribing state
+        appendMessage('user', '🎙️ Transcribing...', new Date().toISOString());
+        const container = document.getElementById('messages');
+        const transcribingEl = container.lastElementChild;
+
+        try {
+          const res = await fetch(`${API}/api/transcribe`, {
+            method: 'POST',
+            body: audioBlob,
+          });
+          const data = await res.json();
+
+          if (data.text) {
+            // Replace transcribing message with actual text
+            transcribingEl.remove();
+            // Send as a regular text message
+            const id = `u${Date.now()}-${++state_uid}`;
+            appendMessage('user', data.text, new Date().toISOString());
+            if (ws && ws.readyState === WebSocket.OPEN && currentRoom) {
+              ws.send(JSON.stringify({ type: 'msg', text: data.text }));
+            }
+            showInterrupt(true);
+          } else {
+            transcribingEl.querySelector('.msg-text').textContent = '⚠️ Transcription failed';
+          }
+        } catch (err) {
+          transcribingEl.querySelector('.msg-text').textContent = '⚠️ Transcription failed';
+          console.error('Transcription error:', err);
+        }
+      };
+
+      mediaRecorder.stop();
+    }
+
+    function cancelRecording() {
+      if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+      mediaRecorder.onstop = () => {
+        mediaRecorder.stream.getTracks().forEach(t => t.stop());
+      };
+      mediaRecorder.stop();
+      isRecording = false;
+      isLocked = false;
+      stopTimer();
+      hideRecordingUI();
+    }
+
+    function hideRecordingUI() {
+      document.getElementById('voice-overlay').classList.add('hidden');
+      document.getElementById('voice-locked-bar').classList.add('hidden');
+    }
+
+    function lockRecording() {
+      isLocked = true;
+      document.getElementById('voice-overlay').classList.add('hidden');
+      document.getElementById('voice-locked-bar').classList.remove('hidden');
+    }
+
+    // We need a simple uid counter for voice messages
+    let state_uid = 0;
+
+    // --- Mic button gesture handling ---
+
+    // Pointer events for cross-platform (mouse + touch)
+    micBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      micBtn.setPointerCapture(e.pointerId);
+      startY = e.clientY;
+      startX = e.clientX;
+      startRecording();
+    });
+
+    micBtn.addEventListener('pointermove', (e) => {
+      if (!isRecording || isLocked) return;
+
+      const dy = startY - e.clientY; // positive = moved up
+      const dx = startX - e.clientX; // positive = moved left
+
+      if (dy > 60) {
+        // Dragged up — lock
+        document.getElementById('voice-lock-icon').textContent = '🔓';
+        document.getElementById('voice-status').textContent = 'Release to lock';
+      } else if (dx > 80) {
+        // Dragged left — show cancel
+        document.getElementById('voice-status').textContent = '← Release to cancel';
+      } else {
+        document.getElementById('voice-lock-icon').textContent = '🔒';
+        document.getElementById('voice-status').textContent = 'Release to send';
+      }
+    });
+
+    micBtn.addEventListener('pointerup', (e) => {
+      if (!isRecording) return;
+
+      const dy = startY - e.clientY;
+      const dx = startX - e.clientX;
+
+      if (isLocked) return; // handled by locked UI buttons
+
+      if (dx > 80) {
+        // Slid left — cancel
+        cancelRecording();
+      } else if (dy > 60) {
+        // Slid up — lock recording
+        lockRecording();
+      } else {
+        // Normal release — send
+        stopAndSendRecording();
+      }
+    });
+
+    // Prevent context menu on long press (mobile)
+    micBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 
     // Init
     (async () => {

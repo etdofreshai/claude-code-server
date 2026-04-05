@@ -753,3 +753,124 @@ h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }
   margin-right: 0.3em;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Voice recording - mic button */
+#mic-btn {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  transition: background 0.15s;
+  user-select: none;
+  touch-action: none;
+}
+#mic-btn:hover { background: #21262d; }
+
+/* Voice recording overlay */
+#voice-overlay {
+  position: fixed;
+  bottom: 4rem;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  background: #161b22;
+  border-top: 1px solid #30363d;
+  z-index: 50;
+}
+#voice-overlay.hidden { display: none; }
+
+#voice-cancel-zone {
+  color: #f85149;
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+#voice-info {
+  text-align: center;
+}
+#voice-timer {
+  font-family: monospace;
+  font-size: 1.5rem;
+  color: #e6edf3;
+}
+#voice-status {
+  font-size: 0.8rem;
+  color: #8b949e;
+  margin-top: 0.2rem;
+}
+#voice-lock-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  color: #8b949e;
+}
+#voice-lock-icon { font-size: 1.2rem; }
+
+/* Voice locked bar (replaces overlay when locked) */
+#voice-locked-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  background: #161b22;
+  border-top: 1px solid #30363d;
+  flex-shrink: 0;
+}
+#voice-locked-bar.hidden { display: none; }
+
+.voice-locked-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.voice-recording-dot {
+  width: 10px;
+  height: 10px;
+  background: #f85149;
+  border-radius: 50%;
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+#voice-locked-timer {
+  font-family: monospace;
+  font-size: 1rem;
+  color: #e6edf3;
+}
+
+.voice-locked-right {
+  display: flex;
+  gap: 0.5rem;
+}
+
+#voice-cancel-btn {
+  background: #21262d;
+  color: #f85149;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 0.35em 0.75em;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+#voice-cancel-btn:hover { background: #da3633; color: #fff; }
+
+#voice-send-btn {
+  background: #238636;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.35em 0.75em;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+#voice-send-btn:hover { background: #2ea043; }
