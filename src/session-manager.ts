@@ -83,6 +83,7 @@ export class SessionManager {
   private stateFile: string;
   private historyFile: string;
   private hubSession: SessionInfo | null = null;
+  private isShuttingDown = false;
   onAssistantMessage: ((sessionId: string, text: string) => void) | null = null;
 
   constructor(cwd: string, defaultOptions: Partial<Options> = {}) {
@@ -208,13 +209,10 @@ export class SessionManager {
 
     const { stream, push, close } = createMessageStream();
 
-    // Send initial prompt if provided or for new sessions
-    // Resumed sessions don't need a prompt — they wait for user input
+    // Only send a message if an explicit prompt was provided.
+    // No automatic init messages — sessions wait for user input.
     if (options?.prompt) {
       push(makeUserMessage(options.prompt));
-    } else if (!options?.resume) {
-      const now = new Date().toLocaleString("sv-SE", { timeZone: "America/Chicago", hour12: false });
-      push(makeUserMessage(`Session started. Current time: ${now} CT. Awaiting instructions.`));
     }
 
     const abortController = new AbortController();
@@ -342,8 +340,12 @@ export class SessionManager {
       console.error(`Session ${session.id} error:`, err);
     } finally {
       session.status = "ended";
-      this.saveState();
-      this.appendHistory(session, "ended");
+      // Don't overwrite saved state during shutdown — shutdown() already saved
+      // the sessions so they can be restored on next startup
+      if (!this.isShuttingDown) {
+        this.saveState();
+        this.appendHistory(session, "ended");
+      }
       console.log(`Session ${session.id}: ended`);
     }
   }
@@ -450,6 +452,7 @@ export class SessionManager {
    */
   shutdown(): void {
     console.log("Shutting down all sessions...");
+    this.isShuttingDown = true;
     for (const session of this.getAllSessions()) {
       if (session.status === "ended") continue;
       try {

@@ -335,15 +335,17 @@
         const date = new Date(s.lastModified);
         const timeAgo = formatTimeAgo(date);
         const size = formatSize(s.sizeBytes);
+        const displayName = s.name ? escapeHtml(s.name) : `<span style="color:#8b949e">Unnamed</span>`;
 
         div.innerHTML = `
           <div class="restore-session-info">
+            <div class="restore-session-name">${displayName}</div>
             <code>${s.id.slice(0, 12)}...</code>
             <span class="restore-session-meta">${timeAgo} &middot; ${size}</span>
           </div>
           ${isActive
             ? '<span class="badge active-badge">Active</span>'
-            : `<button class="restore-action-btn" onclick="restoreSession('${s.id}', event)">Restore</button>`
+            : `<button class="restore-action-btn" onclick="restoreSession('${s.id}', '${s.name ? s.name.replace(/'/g, "\\'") : ''}', event)">Restore</button>`
           }
         `;
         list.appendChild(div);
@@ -368,16 +370,17 @@
       return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     }
 
-    async function restoreSession(sessionId, event) {
+    async function restoreSession(sessionId, sessionName, event) {
       const btn = event.target;
       btn.disabled = true;
       btn.textContent = 'Restoring...';
 
       try {
+        const name = sessionName || `restored-${sessionId.slice(0, 8)}`;
         const res = await fetch(`${API}/api/sessions/new`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ resume: sessionId, name: `restored-${sessionId.slice(0, 8)}` }),
+          body: JSON.stringify({ resume: sessionId, name }),
         });
         const data = await res.json();
 

@@ -569,22 +569,43 @@ app.get("/api/disk-sessions", async (_req, res) => {
       return res.json({ folders: [], sessions: {} });
     }
 
-    // For each folder, list .jsonl session files with their last modified time
-    const sessions: Record<string, Array<{ id: string; lastModified: string; sizeBytes: number }>> = {};
+    // For each folder, list .jsonl session files with their last modified time and name
+    const sessions: Record<string, Array<{ id: string; name: string | null; lastModified: string; sizeBytes: number }>> = {};
 
     for (const folder of folders) {
       const folderPath = join(projectsDir, folder);
       try {
         const files = readdirSync(folderPath);
-        const folderSessions: Array<{ id: string; lastModified: string; sizeBytes: number }> = [];
+        const folderSessions: Array<{ id: string; name: string | null; lastModified: string; sizeBytes: number }> = [];
 
         for (const file of files) {
           if (!file.endsWith(".jsonl")) continue;
           const sessionId = file.replace(".jsonl", "");
           try {
-            const stat = statSync(join(folderPath, file));
+            const filePath = join(folderPath, file);
+            const stat = statSync(filePath);
+
+            // Read session name from the first few lines (look for custom-title)
+            let name: string | null = null;
+            try {
+              const data = readFileSync(filePath, "utf-8");
+              // Only scan the first few lines for the title
+              const firstLines = data.slice(0, 2000).split("\n").slice(0, 10);
+              for (const line of firstLines) {
+                if (!line) continue;
+                try {
+                  const entry = JSON.parse(line);
+                  if (entry.type === "custom-title" && entry.customTitle) {
+                    name = entry.customTitle;
+                    break;
+                  }
+                } catch { /* skip unparseable lines */ }
+              }
+            } catch { /* skip unreadable files */ }
+
             folderSessions.push({
               id: sessionId,
+              name,
               lastModified: stat.mtime.toISOString(),
               sizeBytes: stat.size,
             });

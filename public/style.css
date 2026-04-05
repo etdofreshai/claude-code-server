@@ -430,8 +430,9 @@ h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }
 }
 .restore-session-card.already-active { opacity: 0.5; }
 
-.restore-session-info { display: flex; flex-direction: column; gap: 0.2rem; }
-.restore-session-info code { font-size: 0.85rem; color: #e6edf3; background: none; }
+.restore-session-info { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.restore-session-name { font-weight: 600; font-size: 0.9rem; color: #e6edf3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.restore-session-info code { font-size: 0.8rem; color: #8b949e; background: none; }
 .restore-session-meta { font-size: 0.8rem; color: #8b949e; }
 
 .restore-action-btn {
