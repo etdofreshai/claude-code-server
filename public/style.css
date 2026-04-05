@@ -189,11 +189,17 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
 #messages {
   flex: 1;
   overflow-y: auto;
-  padding: 0.5rem 0;
+  padding: 0.5rem 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  scrollbar-width: thin;
+  scrollbar-color: #30363d transparent;
 }
+#messages::-webkit-scrollbar { width: 6px; }
+#messages::-webkit-scrollbar-track { background: transparent; }
+#messages::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+#messages::-webkit-scrollbar-thumb:hover { background: #484f58; }
 
 .message {
   max-width: 80%;
