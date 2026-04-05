@@ -1,7 +1,7 @@
 import express from "express";
 import { createServer } from "http";
 import { join } from "path";
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { SessionManager } from "./session-manager.js";
 import { Config } from "./config.js";
 import { Heartbeat } from "./heartbeat.js";
@@ -547,6 +547,63 @@ app.post("/api/sessions/:sessionId/unbind", (req, res) => {
   channelManager.unbind(req.params.sessionId);
   session.channel = undefined;
   res.json({ unbound: true });
+});
+
+// --- Disk Sessions (for restore) ---
+
+app.get("/api/disk-sessions", async (_req, res) => {
+  const homeDir = process.env.HOME ?? "/home/claude";
+  const projectsDir = join(homeDir, ".claude/projects");
+
+  try {
+    // List all folders in ~/.claude/projects/
+    const folders: string[] = [];
+    try {
+      const entries = readdirSync(projectsDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          folders.push(entry.name);
+        }
+      }
+    } catch {
+      return res.json({ folders: [], sessions: {} });
+    }
+
+    // For each folder, list .jsonl session files with their last modified time
+    const sessions: Record<string, Array<{ id: string; lastModified: string; sizeBytes: number }>> = {};
+
+    for (const folder of folders) {
+      const folderPath = join(projectsDir, folder);
+      try {
+        const files = readdirSync(folderPath);
+        const folderSessions: Array<{ id: string; lastModified: string; sizeBytes: number }> = [];
+
+        for (const file of files) {
+          if (!file.endsWith(".jsonl")) continue;
+          const sessionId = file.replace(".jsonl", "");
+          try {
+            const stat = statSync(join(folderPath, file));
+            folderSessions.push({
+              id: sessionId,
+              lastModified: stat.mtime.toISOString(),
+              sizeBytes: stat.size,
+            });
+          } catch { /* skip unreadable files */ }
+        }
+
+        // Sort by lastModified descending (newest first)
+        folderSessions.sort((a, b) => new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime());
+
+        if (folderSessions.length > 0) {
+          sessions[folder] = folderSessions;
+        }
+      } catch { /* skip unreadable folders */ }
+    }
+
+    res.json({ folders: folders.filter(f => sessions[f]), sessions });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 // --- Server ---
