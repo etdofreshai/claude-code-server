@@ -314,15 +314,41 @@ app.post("/api/all-sessions/end", async (_req, res) => {
 // --- Session CRUD ---
 
 app.get("/api/sessions", (_req, res) => {
-  const sessions = manager.getAllSessions().map((s) => ({
-    id: s.id,
-    name: s.name,
-    status: s.status,
-    createdAt: s.createdAt,
-    messageCount: s.messages.length,
-    remoteControl: s.remoteControl,
-    channel: s.channel,
-  }));
+  const sessions = manager.getAllSessions().map((s) => {
+    // Count messages from the JSONL file on disk for an accurate count
+    const projectSlug = WORKSPACE_DIR.replace(/\//g, "-");
+    const jsonlPath = join(
+      process.env.HOME ?? "/home/claude",
+      ".claude/projects",
+      projectSlug,
+      `${s.id}.jsonl`
+    );
+    let messageCount = 0;
+    try {
+      if (existsSync(jsonlPath)) {
+        const data = readFileSync(jsonlPath, "utf-8");
+        for (const line of data.split("\n")) {
+          if (!line) continue;
+          try {
+            const msg = JSON.parse(line);
+            if (msg.type === "user" || msg.type === "assistant") {
+              messageCount++;
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+
+    return {
+      id: s.id,
+      name: s.name,
+      status: s.status,
+      createdAt: s.createdAt,
+      messageCount,
+      remoteControl: s.remoteControl,
+      channel: s.channel,
+    };
+  });
   res.json({ sessions });
 });
 
