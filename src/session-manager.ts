@@ -163,6 +163,7 @@ export class SessionManager {
       settingSources: ["user", "project", "local"],
       extraArgs: {
         name: name,
+        chrome: null,
         ...this.defaultOptions.extraArgs,
       },
       ...(options?.resume ? { resume: options.resume } : {}),
