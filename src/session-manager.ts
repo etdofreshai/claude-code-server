@@ -333,6 +333,26 @@ export class SessionManager {
     return ended;
   }
 
+  /**
+   * Graceful shutdown — close ALL sessions including hub.
+   * State is saved so sessions can be restored on next startup.
+   */
+  shutdown(): void {
+    console.log("Shutting down all sessions...");
+    for (const session of this.getAllSessions()) {
+      if (session.status === "ended") continue;
+      try {
+        (session as any)._closeStream?.();
+        session.query.close();
+        console.log(`Session ${session.id} (${session.name}): closed`);
+      } catch (err) {
+        console.error(`Session ${session.id}: failed to close:`, err);
+      }
+    }
+    // Save state BEFORE marking ended, so they can be restored
+    this.saveState();
+  }
+
   async restartSession(sessionId: string): Promise<SessionInfo> {
     const session = this.sessions.get(sessionId);
     if (!session) {

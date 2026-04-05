@@ -573,5 +573,20 @@ httpServer.listen(PORT, async () => {
     }
   });
 
+  // Graceful shutdown
+  const shutdown = async () => {
+    console.log("\nGraceful shutdown initiated...");
+    heartbeat.stop();
+    jobManager.stop();
+    await channelManager.stopAll();
+    manager.shutdown();
+    httpServer.close();
+    console.log("Shutdown complete");
+    process.exit(0);
+  };
+
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+
   console.log("All systems initialized");
 });
