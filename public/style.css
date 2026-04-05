@@ -419,8 +419,9 @@ h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }
   margin-bottom: 0.75rem;
 }
 .picker-header h2 { margin-bottom: 0; }
+.picker-header-actions { display: flex; gap: 0.5rem; }
 
-#restore-btn {
+#add-btn, #restore-btn {
   background: #21262d;
   color: #e6edf3;
   border: 1px solid #30363d;
@@ -429,7 +430,57 @@ h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }
   cursor: pointer;
   font-size: 0.9rem;
 }
-#restore-btn:hover { background: #30363d; border-color: #58a6ff; }
+#add-btn:hover, #restore-btn:hover { background: #30363d; border-color: #58a6ff; }
+#add-btn { color: #3fb950; border-color: #238636; }
+#add-btn:hover { background: #238636; color: #fff; }
+
+/* Add workspace modal */
+#add-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+#add-body { padding: 1.25rem; }
+.add-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e6edf3;
+  margin-bottom: 0.35rem;
+  margin-top: 0.75rem;
+}
+.add-label:first-child { margin-top: 0; }
+.add-input {
+  width: 100%;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 0.6em 0.8em;
+  color: #e6edf3;
+  font-size: 0.95rem;
+  outline: none;
+}
+.add-input:focus { border-color: #58a6ff; }
+.add-input::placeholder { color: #484f58; }
+.add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+.add-cancel-btn {
+  background: #21262d;
+  color: #e6edf3;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 0.5em 1.2em;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.add-cancel-btn:hover { background: #30363d; }
 
 /* Restore modal */
 #restore-modal {

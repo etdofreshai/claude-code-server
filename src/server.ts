@@ -211,6 +211,7 @@ app.get("/api/state", (_req, res) => {
     jobs: jobManager.listJobs(),
     sessions,
     channels: channelManager.getAllBindings(),
+    workspaceDir: WORKSPACE_DIR,
   });
 });
 

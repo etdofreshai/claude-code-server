@@ -17,7 +17,10 @@
     <div id="session-picker" class="panel">
       <div class="picker-header">
         <h2>Select a Session</h2>
-        <button id="restore-btn" onclick="openRestoreModal()">Restore Session</button>
+        <div class="picker-header-actions">
+          <button id="add-btn" onclick="openAddModal()">+ Add Workspace</button>
+          <button id="restore-btn" onclick="openRestoreModal()">Restore Session</button>
+        </div>
       </div>
       <div id="session-list"></div>
     </div>
@@ -49,6 +52,29 @@
         <button type="submit" id="send-btn">Send</button>
       </form>
     </div>
+    <!-- Add workspace modal -->
+    <div id="add-modal" style="display:none">
+      <div class="restore-backdrop" onclick="closeAddModal()"></div>
+      <div class="restore-content" style="max-width:480px">
+        <div class="restore-header">
+          <h3>Add Workspace</h3>
+          <button onclick="closeAddModal()" class="restore-close">&times;</button>
+        </div>
+        <div id="add-body">
+          <label class="add-label">Name</label>
+          <input type="text" id="add-name" class="add-input" placeholder="My Workspace" autocomplete="off" />
+          <label class="add-label">Working Directory</label>
+          <input type="text" id="add-cwd" class="add-input" placeholder="/home/claude/workspace" autocomplete="off" />
+          <label class="add-label">Initial Prompt <span style="color:#8b949e;font-weight:400">(optional)</span></label>
+          <input type="text" id="add-prompt" class="add-input" placeholder="e.g. Review the codebase and summarize it" autocomplete="off" />
+          <div class="add-actions">
+            <button onclick="closeAddModal()" class="add-cancel-btn">Cancel</button>
+            <button onclick="createWorkspace()" id="add-submit-btn" class="restore-action-btn">Create</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Restore session modal -->
     <div id="restore-modal" style="display:none">
       <div class="restore-backdrop" onclick="closeRestoreModal()"></div>
@@ -77,6 +103,7 @@
     let ws = null;
     let currentRoom = null;
     let currentSessionId = null;
+    let WORKSPACE_DIR = '/home/claude/workspace'; // default, updated on load
 
     async function loadSessions() {
       const res = await fetch(`${API}/api/sessions`);
@@ -415,6 +442,75 @@
       showInterrupt(true);
     };
 
+    // --- Add Workspace Modal ---
+
+    function openAddModal() {
+      document.getElementById('add-modal').style.display = 'flex';
+      const nameInput = document.getElementById('add-name');
+      const cwdInput = document.getElementById('add-cwd');
+      nameInput.value = '';
+      cwdInput.value = WORKSPACE_DIR;
+      document.getElementById('add-prompt').value = '';
+      nameInput.focus();
+    }
+
+    function closeAddModal() {
+      document.getElementById('add-modal').style.display = 'none';
+    }
+
+    async function createWorkspace() {
+      const name = document.getElementById('add-name').value.trim();
+      const cwd = document.getElementById('add-cwd').value.trim();
+      const prompt = document.getElementById('add-prompt').value.trim();
+
+      if (!name) {
+        document.getElementById('add-name').focus();
+        return;
+      }
+
+      const btn = document.getElementById('add-submit-btn');
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+
+      try {
+        const body = { name };
+        if (cwd) body.cwd = cwd;
+        if (prompt) body.prompt = prompt;
+
+        const res = await fetch(`${API}/api/sessions/new`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          btn.textContent = 'Failed';
+          btn.style.background = '#da3633';
+          setTimeout(() => { btn.textContent = 'Create'; btn.disabled = false; btn.style.background = ''; }, 2000);
+          return;
+        }
+
+        btn.textContent = 'Created!';
+        btn.style.background = '#238636';
+        setTimeout(() => {
+          closeAddModal();
+          btn.textContent = 'Create';
+          btn.disabled = false;
+          btn.style.background = '';
+          loadSessions();
+        }, 800);
+      } catch (err) {
+        btn.textContent = 'Error';
+        setTimeout(() => { btn.textContent = 'Create'; btn.disabled = false; btn.style.background = ''; }, 2000);
+      }
+    }
+
+    // Allow Enter to submit the add modal
+    document.getElementById('add-prompt').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); createWorkspace(); }
+    });
+
     // --- Restore Session Modal ---
 
     let diskSessionsCache = null;
@@ -568,6 +664,13 @@
     }
 
     // Init
+    (async () => {
+      try {
+        const res = await fetch(`${API}/api/state`);
+        const data = await res.json();
+        if (data.workspaceDir) WORKSPACE_DIR = data.workspaceDir;
+      } catch {}
+    })();
     loadSessions();
     connectWS();
   </script>
