@@ -184,7 +184,7 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
 }
 #chat-input:focus { border-color: #58a6ff; }
 
-#chat-form button {
+#send-btn {
   background: #238636;
   color: #fff;
   border: none;
@@ -193,7 +193,18 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
   font-size: 1rem;
   cursor: pointer;
 }
-#chat-form button:hover { background: #2ea043; }
+#send-btn:hover { background: #2ea043; }
+
+#interrupt-btn {
+  background: #da3633;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  cursor: pointer;
+}
+#interrupt-btn:hover { background: #f85149; }
 
 /* Loading */
 .loading {

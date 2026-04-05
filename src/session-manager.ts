@@ -174,8 +174,11 @@ export class SessionManager {
       push(makeUserMessage(`Session started. Current time: ${now} CT. Awaiting instructions.`));
     }
 
+    const abortController = new AbortController();
+
     const queryOptions: Options = {
       ...this.defaultOptions,
+      abortController,
       cwd: options?.cwd ?? this.cwd,
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
@@ -206,8 +209,9 @@ export class SessionManager {
       sendMessage: (text: string) => push(makeUserMessage(text)),
     };
 
-    // Store close fn for cleanup
+    // Store close fn and abort controller for cleanup/interrupt
     (session as any)._closeStream = close;
+    (session as any)._abortController = abortController;
 
     // Start consuming messages in background
     this.consumeMessages(session);
@@ -320,6 +324,39 @@ export class SessionManager {
       throw new Error(`Session ${sessionId} not found or not running`);
     }
     return session.query.reloadPlugins();
+  }
+
+  /**
+   * Interrupt a running session — aborts the current turn then resumes.
+   * The session is torn down and immediately re-created with --resume.
+   */
+  async interruptSession(sessionId: string): Promise<SessionInfo> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session ${sessionId} not found`);
+    }
+    const { name, isHub, remoteControl, channel } = session;
+
+    // Abort and close the current query
+    const ac = (session as any)._abortController as AbortController | undefined;
+    if (ac) ac.abort();
+    (session as any)._closeStream?.();
+    session.query.close();
+    session.status = "ended";
+    this.sessions.delete(sessionId);
+
+    // Immediately resume — creates a new query attached to the same session
+    const newSession = await this.createSession({
+      name,
+      resume: sessionId,
+      isHub,
+      remoteControl,
+      channel,
+    });
+    if (isHub) this.hubSession = newSession;
+
+    console.log(`Session ${sessionId}: interrupted and resumed`);
+    return newSession;
   }
 
   async reloadAllPlugins(): Promise<Record<string, any>> {

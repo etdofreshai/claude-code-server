@@ -495,6 +495,15 @@ app.post("/api/sessions/:sessionId/resume", async (req, res) => {
   }
 });
 
+app.post("/api/sessions/:sessionId/interrupt", async (req, res) => {
+  try {
+    const session = await manager.interruptSession(req.params.sessionId);
+    res.json({ id: session.id, name: session.name, status: session.status, interrupted: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 app.post("/api/sessions/:sessionId/reload-plugins", async (req, res) => {
   try {
     const result = await manager.reloadPlugins(req.params.sessionId);
