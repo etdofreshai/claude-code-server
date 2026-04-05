@@ -33,12 +33,19 @@
           <span id="chat-session-status" class="status"></span>
         </div>
         <div id="chat-header-right">
-          <button id="hub-btn" onclick="setAsHub()">Set as Hub</button>
-          <label id="rc-toggle">
-            <input type="checkbox" id="rc-checkbox" onchange="toggleRemoteControl()" />
-            <span>Remote Control</span>
-          </label>
-          <button id="remove-btn" onclick="removeCurrentSession()">Remove</button>
+          <div class="tools-dropdown">
+            <button id="tools-btn" onclick="toggleToolsMenu()">Tools &#9662;</button>
+            <div id="tools-menu" class="tools-menu hidden">
+              <button onclick="openSendToModal(); closeToolsMenu()">Send to Workspace</button>
+              <button id="hub-menu-btn" onclick="setAsHub(); closeToolsMenu()">Set as Hub</button>
+              <label class="tools-menu-toggle" onclick="event.stopPropagation()">
+                <input type="checkbox" id="rc-checkbox" onchange="toggleRemoteControl()" />
+                <span>Remote Control</span>
+              </label>
+              <hr />
+              <button class="tools-menu-danger" onclick="removeCurrentSession(); closeToolsMenu()">Remove Session</button>
+            </div>
+          </div>
         </div>
       </div>
       <div id="messages"></div>
@@ -98,6 +105,35 @@
       </div>
     </div>
   </div>
+
+    <!-- Send to workspace modal -->
+    <div id="sendto-modal" style="display:none">
+      <div class="restore-backdrop" onclick="closeSendToModal()"></div>
+      <div class="restore-content" style="max-width:540px">
+        <div class="restore-header">
+          <h3>Send to Workspace</h3>
+          <button onclick="closeSendToModal()" class="restore-close">&times;</button>
+        </div>
+        <div id="sendto-body">
+          <label class="add-label">Target Workspace</label>
+          <select id="sendto-target" class="add-input"></select>
+          <label class="add-label">Your Request</label>
+          <textarea id="sendto-text" class="add-input" rows="4" placeholder="What would you like the target workspace to do?"></textarea>
+          <div id="sendto-images-preview" style="display:none">
+            <div id="sendto-images-list"></div>
+          </div>
+          <div class="sendto-attach-row">
+            <button type="button" class="sendto-attach-btn" onclick="document.getElementById('sendto-file-input').click()">&#x1f5bc;&#xfe0f; Attach Image</button>
+            <input type="file" id="sendto-file-input" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden />
+          </div>
+          <p class="restore-hint" style="margin-top:0.5rem">Recent conversation context from the current session will be included automatically.</p>
+          <div class="add-actions">
+            <button onclick="closeSendToModal()" class="add-cancel-btn">Cancel</button>
+            <button onclick="sendToWorkspace()" id="sendto-submit-btn" class="restore-action-btn">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
   <!-- Image preview modal -->
   <div id="image-modal" style="display:none" onclick="closeImagePreview()">
@@ -191,9 +227,6 @@
       // Set remote control checkbox
       const rcCheckbox = document.getElementById('rc-checkbox');
       rcCheckbox.checked = remoteControl;
-
-      // Update hub button state
-      updateHubButton();
 
       // Clear and load history
       const container = document.getElementById('messages');
@@ -309,38 +342,18 @@
       showPicker();
     }
 
-    function updateHubButton() {
-      const btn = document.getElementById('hub-btn');
-      if (currentIsHub) {
-        btn.textContent = 'Hub';
-        btn.classList.add('is-hub');
-        btn.disabled = true;
-      } else {
-        btn.textContent = 'Set as Hub';
-        btn.classList.remove('is-hub');
-        btn.disabled = false;
-      }
-    }
-
     async function setAsHub() {
       if (!currentSessionId || currentIsHub) return;
-      const btn = document.getElementById('hub-btn');
-      btn.disabled = true;
-      btn.textContent = 'Setting...';
 
       try {
         const res = await fetch(`${API}/api/sessions/${currentSessionId}/set-hub`, { method: 'POST' });
         const data = await res.json();
         if (data.error) {
-          btn.textContent = 'Failed';
-          setTimeout(() => updateHubButton(), 2000);
           return;
         }
         currentIsHub = true;
-        updateHubButton();
       } catch (err) {
-        btn.textContent = 'Error';
-        setTimeout(() => updateHubButton(), 2000);
+        console.error('Set hub failed:', err);
       }
     }
 
@@ -728,6 +741,161 @@
         btn.textContent = 'Error';
         btn.disabled = false;
         setTimeout(() => { btn.textContent = 'Restore'; btn.style.background = ''; }, 2000);
+      }
+    }
+
+    // --- Tools dropdown ---
+
+    function toggleToolsMenu() {
+      const menu = document.getElementById('tools-menu');
+      menu.classList.toggle('hidden');
+      // Update hub button text in menu
+      const hubBtn = document.getElementById('hub-menu-btn');
+      if (currentIsHub) {
+        hubBtn.textContent = '\u2713 Hub';
+        hubBtn.disabled = true;
+        hubBtn.style.opacity = '0.5';
+      } else {
+        hubBtn.textContent = 'Set as Hub';
+        hubBtn.disabled = false;
+        hubBtn.style.opacity = '';
+      }
+    }
+
+    function closeToolsMenu() {
+      document.getElementById('tools-menu').classList.add('hidden');
+    }
+
+    // Close tools menu when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.tools-dropdown')) {
+        closeToolsMenu();
+      }
+    });
+
+    // --- Send to Workspace ---
+
+    let sendToImages = [];
+
+    async function openSendToModal() {
+      document.getElementById('sendto-modal').style.display = 'flex';
+      document.getElementById('sendto-text').value = '';
+      sendToImages = [];
+      renderSendToImages();
+
+      // Populate target dropdown with other sessions
+      const select = document.getElementById('sendto-target');
+      select.innerHTML = '';
+      try {
+        const res = await fetch(`${API}/api/sessions`);
+        const data = await res.json();
+        for (const s of data.sessions) {
+          if (s.id === currentSessionId) continue; // skip current
+          if (s.status !== 'running') continue; // only running sessions
+          const opt = document.createElement('option');
+          opt.value = s.id;
+          opt.textContent = s.name;
+          select.appendChild(opt);
+        }
+        if (select.options.length === 0) {
+          const opt = document.createElement('option');
+          opt.value = '';
+          opt.textContent = 'No other running sessions';
+          opt.disabled = true;
+          select.appendChild(opt);
+        }
+      } catch (err) {
+        console.error('Failed to load sessions:', err);
+      }
+
+      document.getElementById('sendto-text').focus();
+    }
+
+    function closeSendToModal() {
+      document.getElementById('sendto-modal').style.display = 'none';
+      sendToImages = [];
+      renderSendToImages();
+    }
+
+    // Image handling for send-to modal
+    document.getElementById('sendto-file-input').addEventListener('change', async (e) => {
+      for (const file of e.target.files) {
+        if (!file.type.match(/^image\/(jpeg|png|gif|webp)$/)) continue;
+        const img = await fileToBase64(file);
+        sendToImages.push(img);
+      }
+      e.target.value = '';
+      renderSendToImages();
+    });
+
+    function renderSendToImages() {
+      const container = document.getElementById('sendto-images-preview');
+      const list = document.getElementById('sendto-images-list');
+      if (sendToImages.length === 0) {
+        container.style.display = 'none';
+        list.innerHTML = '';
+        return;
+      }
+      container.style.display = 'block';
+      list.innerHTML = '';
+      sendToImages.forEach((img, i) => {
+        const thumb = document.createElement('div');
+        thumb.className = 'image-thumb';
+        thumb.innerHTML = `
+          <img src="${img.dataUrl}" alt="attachment" />
+          <button class="image-thumb-remove" onclick="removeSendToImage(${i})">&times;</button>
+        `;
+        list.appendChild(thumb);
+      });
+    }
+
+    function removeSendToImage(index) {
+      sendToImages.splice(index, 1);
+      renderSendToImages();
+    }
+
+    async function sendToWorkspace() {
+      const targetId = document.getElementById('sendto-target').value;
+      const text = document.getElementById('sendto-text').value.trim();
+      if (!targetId || !text) {
+        document.getElementById('sendto-text').focus();
+        return;
+      }
+
+      const btn = document.getElementById('sendto-submit-btn');
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+
+      try {
+        const images = sendToImages.length > 0
+          ? sendToImages.map(img => ({ mediaType: img.mediaType, data: img.data }))
+          : undefined;
+
+        const res = await fetch(`${API}/api/sessions/${currentSessionId}/send-to`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetSessionId: targetId, text, images }),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          btn.textContent = 'Failed';
+          btn.style.background = '#da3633';
+          setTimeout(() => { btn.textContent = 'Send'; btn.disabled = false; btn.style.background = ''; }, 2000);
+          return;
+        }
+
+        btn.textContent = 'Sent!';
+        btn.style.background = '#238636';
+        setTimeout(() => {
+          closeSendToModal();
+          btn.textContent = 'Send';
+          btn.disabled = false;
+          btn.style.background = '';
+        }, 1000);
+      } catch (err) {
+        btn.textContent = 'Error';
+        setTimeout(() => { btn.textContent = 'Send'; btn.disabled = false; btn.style.background = ''; }, 2000);
       }
     }
 

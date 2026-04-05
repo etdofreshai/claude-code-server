@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer } from "http";
 import { join } from "path";
+import { getSessionMessages } from "@anthropic-ai/claude-agent-sdk";
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { SessionManager } from "./session-manager.js";
 import { Config } from "./config.js";
@@ -610,6 +611,62 @@ app.post("/api/sessions/:sessionId/unbind", (req, res) => {
   channelManager.unbind(req.params.sessionId);
   session.channel = undefined;
   res.json({ unbound: true });
+});
+
+// --- Send to Workspace ---
+
+app.post("/api/sessions/:sessionId/send-to", async (req, res) => {
+  const sourceSession = manager.getSession(req.params.sessionId);
+  if (!sourceSession) return res.status(404).json({ error: "Source session not found" });
+
+  const { targetSessionId, text, images } = req.body ?? {};
+  if (!targetSessionId) return res.status(400).json({ error: "targetSessionId is required" });
+
+  const targetSession = manager.getSession(targetSessionId);
+  if (!targetSession) return res.status(404).json({ error: "Target session not found" });
+  if (targetSession.status !== "running") return res.status(400).json({ error: "Target session not running" });
+
+  // Read recent messages from source session for context
+  let contextBlock = "";
+  try {
+    const msgs = await getSessionMessages(req.params.sessionId, { dir: WORKSPACE_DIR, limit: 20 });
+    const lines: string[] = [];
+    for (const msg of msgs) {
+      if (msg.type === "system") continue;
+      const content = (msg.message as any)?.content;
+      let msgText = "";
+      if (typeof content === "string") {
+        msgText = content;
+      } else if (Array.isArray(content)) {
+        msgText = content
+          .filter((b: any) => b.type === "text")
+          .map((b: any) => b.text)
+          .join("\n");
+      }
+      if (!msgText) continue;
+      const role = msg.type === "user" ? "User" : "Assistant";
+      // Truncate long messages in context
+      const truncated = msgText.length > 500 ? msgText.slice(0, 500) + "..." : msgText;
+      lines.push(`${role}: ${truncated}`);
+    }
+    if (lines.length > 0) {
+      contextBlock = `[Context from "${sourceSession.name}"]:\n${lines.join("\n\n")}\n\n`;
+    }
+  } catch (err) {
+    console.error("Failed to read source session messages:", err);
+    // Continue without context rather than failing
+  }
+
+  const fullMessage = `${contextBlock}[Request]:\n${text || ""}`;
+
+  // Convert images if present
+  const imageAttachments = images?.map((img: any) => ({
+    mediaType: img.mediaType,
+    data: img.data,
+  }));
+
+  targetSession.sendMessage(fullMessage, imageAttachments);
+  res.json({ sent: true, targetSessionId });
 });
 
 // --- Disk Sessions (for restore) ---

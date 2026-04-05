@@ -117,48 +117,60 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
   gap: 0.75rem;
 }
 
-#rc-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.85rem;
-  color: #8b949e;
-  cursor: pointer;
-  user-select: none;
-}
-#rc-toggle input { cursor: pointer; }
-#rc-toggle:has(input:checked) { color: #d29922; }
+/* Tools dropdown */
+.tools-dropdown { position: relative; }
 
-#hub-btn {
+#tools-btn {
   background: #21262d;
-  color: #3fb950;
-  border: 1px solid #238636;
-  border-radius: 6px;
-  padding: 0.35em 0.75em;
-  cursor: pointer;
-  font-size: 0.85rem;
-  transition: background 0.15s, border-color 0.15s;
-}
-#hub-btn:hover:not(:disabled) { background: #238636; color: #fff; border-color: #238636; }
-#hub-btn.is-hub {
-  background: #0d2818;
-  color: #3fb950;
-  border-color: #1a4028;
-  cursor: default;
-}
-#hub-btn:disabled { opacity: 0.8; }
-
-#remove-btn {
-  background: #21262d;
-  color: #f85149;
+  color: #e6edf3;
   border: 1px solid #30363d;
   border-radius: 6px;
   padding: 0.35em 0.75em;
   cursor: pointer;
   font-size: 0.85rem;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s;
 }
-#remove-btn:hover { background: #da3633; color: #fff; border-color: #da3633; }
+#tools-btn:hover { background: #30363d; }
+
+.tools-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  min-width: 200px;
+  padding: 0.4rem 0;
+  z-index: 50;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.tools-menu.hidden { display: none; }
+
+.tools-menu button, .tools-menu-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  background: none;
+  border: none;
+  color: #e6edf3;
+  padding: 0.5em 1em;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.tools-menu button:hover, .tools-menu-toggle:hover { background: #21262d; }
+.tools-menu-toggle { font-size: 0.9rem; color: #8b949e; cursor: pointer; }
+.tools-menu-toggle:has(input:checked) { color: #d29922; }
+.tools-menu-toggle input { cursor: pointer; }
+
+.tools-menu hr {
+  border: none;
+  border-top: 1px solid #21262d;
+  margin: 0.3rem 0;
+}
+.tools-menu-danger { color: #f85149 !important; }
+.tools-menu-danger:hover { background: rgba(248, 81, 73, 0.1) !important; }
 
 #back-btn {
   background: #21262d;
@@ -673,3 +685,35 @@ h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }
   border-radius: 8px;
   font-size: 0.75rem;
 }
+
+/* Send-to modal extras */
+#sendto-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+#sendto-body { padding: 1.25rem; }
+#sendto-body select {
+  appearance: auto;
+}
+#sendto-body textarea {
+  font-family: inherit;
+  resize: vertical;
+}
+#sendto-images-preview { margin-top: 0.5rem; }
+#sendto-images-list { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.sendto-attach-row { margin-top: 0.5rem; }
+.sendto-attach-btn {
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 0.35em 0.75em;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #e6edf3;
+  transition: background 0.15s;
+}
+.sendto-attach-btn:hover { background: #30363d; border-color: #58a6ff; }
