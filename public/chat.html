@@ -385,7 +385,9 @@
           '</div>';
       }
 
-      div.innerHTML = `<div class="msg-text">${renderedText}</div>${imageHtml}${timeStr ? `<div class="msg-time">${timeStr}</div>` : ''}`;
+      // Show timestamps on user/assistant messages but not tool summaries
+      const showTime = timeStr && type !== 'tool';
+      div.innerHTML = `<div class="msg-text">${renderedText}</div>${imageHtml}${showTime ? `<div class="msg-time">${timeStr}</div>` : ''}`;
       const container = document.getElementById('messages');
       container.appendChild(div);
       container.scrollTop = container.scrollHeight;

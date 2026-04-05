@@ -468,7 +468,7 @@ app.get("/api/sessions/:sessionId/messages", (req, res) => {
             // Extract text blocks
             const textParts = content.filter((b: any) => b.type === "text").map((b: any) => b.text);
             if (textParts.length > 0) {
-              messages.push({ from: "assistant", type: "text", text: textParts.join("\n"), ts: null });
+              messages.push({ from: "assistant", type: "text", text: textParts.join("\n"), ts: msg.timestamp ?? null });
             }
 
             // Note tool uses with details (description, file path, etc.)
