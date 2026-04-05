@@ -77,6 +77,7 @@ export class SessionManager {
   private defaultOptions: Partial<Options>;
   private stateFile: string;
   private hubSession: SessionInfo | null = null;
+  onAssistantMessage: ((sessionId: string, text: string) => void) | null = null;
 
   constructor(cwd: string, defaultOptions: Partial<Options> = {}) {
     this.cwd = cwd;
@@ -260,6 +261,20 @@ export class SessionManager {
 
         if (message.type === "result") {
           console.log(`Session ${session.id}: result received`);
+        }
+
+        // Notify listener of assistant text messages
+        if (message.type === "assistant" && this.onAssistantMessage && session.id) {
+          const content = (message as any).message?.content;
+          if (Array.isArray(content)) {
+            const text = content
+              .filter((b: any) => b.type === "text")
+              .map((b: any) => b.text)
+              .join("\n");
+            if (text) {
+              this.onAssistantMessage(session.id, text);
+            }
+          }
         }
       }
     } catch (err) {

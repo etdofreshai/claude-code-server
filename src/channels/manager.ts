@@ -99,7 +99,14 @@ export class ChannelManager {
    * Handle an inbound message from a channel platform.
    */
   private handleInbound(type: string, targetId: string, text: string, meta: MessageMeta): void {
-    const sessionId = this.getSessionForTarget(type, targetId);
+    // For web channel, the targetId IS the session ID (room = session ID)
+    let sessionId = this.getSessionForTarget(type, targetId);
+
+    if (!sessionId && type === "web") {
+      // Direct routing: web chat rooms use session ID as room name
+      sessionId = targetId;
+    }
+
     if (!sessionId) {
       console.log(`No session bound to ${type}:${targetId}, ignoring message`);
       return;

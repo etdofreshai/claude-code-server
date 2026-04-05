@@ -551,6 +551,13 @@ const httpServer = createServer(app);
 // Attach WebSocket to the HTTP server
 webChannel.attachToServer(httpServer);
 
+// Route assistant messages to web channel (session ID = room name)
+manager.onAssistantMessage = (sessionId, text) => {
+  webChannel.send(sessionId, text);
+  // Also route to bound channels (telegram, discord, etc.)
+  channelManager.sendToChannel(sessionId, text);
+};
+
 httpServer.listen(PORT, async () => {
   console.log(`claude-code-server listening on :${PORT}`);
   console.log(`Workspace: ${WORKSPACE_DIR}`);
