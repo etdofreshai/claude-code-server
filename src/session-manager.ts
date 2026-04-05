@@ -241,11 +241,21 @@ export class SessionManager {
 
     // For new sessions (not resumed), we must push an initial message so the
     // SDK bootstraps and emits the init event (which gives us the session ID).
-    // Use the explicit prompt if provided, otherwise a minimal init message.
+    // Use the explicit prompt if provided, otherwise a silent bootstrap message
+    // marked as synthetic so it doesn't appear in the conversation.
+    let isSilentBootstrap = false;
     if (options?.prompt) {
       push(makeUserMessage(options.prompt));
     } else if (!options?.resume) {
-      push(makeUserMessage("Awaiting instructions."));
+      isSilentBootstrap = true;
+      const bootstrapMsg: SDKUserMessage = {
+        type: "user",
+        message: { role: "user", content: "." },
+        parent_tool_use_id: null,
+        isSynthetic: true,
+        timestamp: new Date().toISOString(),
+      };
+      push(bootstrapMsg);
     }
 
     const abortController = new AbortController();
@@ -288,7 +298,7 @@ export class SessionManager {
     (session as any)._abortController = abortController;
 
     // Start consuming messages in background
-    this.consumeMessages(session);
+    this.consumeMessages(session, isSilentBootstrap);
 
     if (isResuming) {
       // For resumed sessions, we already know the ID — no need to wait
@@ -341,7 +351,8 @@ export class SessionManager {
     });
   }
 
-  private async consumeMessages(session: SessionInfo): Promise<void> {
+  private async consumeMessages(session: SessionInfo, suppressFirstTurn = false): Promise<void> {
+    let suppressing = suppressFirstTurn;
     try {
       for await (const message of session.query) {
         session.messages.push(message);
@@ -351,12 +362,19 @@ export class SessionManager {
           session.status = "running";
         }
 
+        // When the bootstrap turn's result arrives, stop suppressing
+        if (suppressing && message.type === "result") {
+          suppressing = false;
+          console.log(`Session ${session.id}: bootstrap turn complete (suppressed)`);
+          continue;
+        }
+
         if (message.type === "result") {
           console.log(`Session ${session.id}: result received`);
         }
 
-        // Notify listener of assistant text messages
-        if (message.type === "assistant" && this.onAssistantMessage && session.id) {
+        // Notify listener of assistant text messages (skip if suppressing bootstrap)
+        if (message.type === "assistant" && this.onAssistantMessage && session.id && !suppressing) {
           const content = (message as any).message?.content;
           if (Array.isArray(content)) {
             const text = content
