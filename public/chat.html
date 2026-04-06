@@ -1017,6 +1017,8 @@
       addBtn('Send to Workspace', () => sidebarSendTo(sessionId));
       addBtn(isHub ? '✓ Hub' : 'Set as Hub', () => sidebarSetHub(sessionId), { disabled: isHub });
       addBtn(isRC ? 'Disable Remote Control' : 'Enable Remote Control', () => sidebarToggleRC(sessionId, !isRC));
+      addBtn('Copy Session ID', () => navigator.clipboard.writeText(sessionId));
+      addBtn('Copy Chat History', () => sidebarCopyChatHistory(sessionId));
 
       const hr = document.createElement('hr');
       menu.appendChild(hr);
@@ -1050,6 +1052,22 @@
         await fetch(`${API}/api/sessions/${sessionId}/end`, { method: 'POST' });
       } catch {}
       loadSidebarSessions();
+    }
+
+    async function sidebarCopyChatHistory(sessionId) {
+      try {
+        const res = await fetch(`${API}/api/sessions/${sessionId}/messages`);
+        const data = await res.json();
+        const lines = [];
+        for (const msg of data.messages) {
+          if (msg.type === 'tool') continue;
+          const from = msg.from === 'user' ? 'User' : 'Assistant';
+          if (msg.text) lines.push(`${from}: ${msg.text}`);
+        }
+        navigator.clipboard.writeText(lines.join('\n\n'));
+      } catch (err) {
+        console.error('Failed to copy chat history:', err);
+      }
     }
 
     function sidebarSendTo(targetId) {
