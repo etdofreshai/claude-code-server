@@ -272,6 +272,44 @@
         };
         list.appendChild(div);
       }
+
+      // Load remote sessions for the picker too
+      try {
+        const relayRes = await fetch(`${API}/api/relay/sessions`);
+        const relayData = await relayRes.json();
+        if (relayData.sessions && relayData.sessions.length > 0) {
+          const grouped = {};
+          for (const s of relayData.sessions) {
+            const key = s.serverName || 'Remote';
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push(s);
+          }
+          for (const [serverName, sessions] of Object.entries(grouped)) {
+            const header = document.createElement('div');
+            header.className = 'session-group-header';
+            header.textContent = serverName;
+            list.appendChild(header);
+
+            for (const s of sessions) {
+              const div = document.createElement('div');
+              div.className = 'session-card remote';
+              const rcBadge = s.remoteControl ? '<span class="badge rc">RC</span>' : '';
+              const hubBadge = s.isHub ? '<span class="badge hub">Hub</span>' : '';
+              div.innerHTML = `
+                <span class="badge channel">Remote</span>
+                <div class="session-name">${escapeHtml(s.name)}</div>
+                <div class="session-meta">
+                  <span class="status ${s.status}">${s.status}</span>
+                  <span>${s.messageCount || 0} msgs</span>
+                  ${rcBadge}${hubBadge}
+                </div>
+              `;
+              div.onclick = () => joinRemoteSession(s.serverId, s.id, s.name, s.status);
+              list.appendChild(div);
+            }
+          }
+        }
+      } catch {}
     }
 
     function connectWS() {

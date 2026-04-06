@@ -55,8 +55,15 @@ export class RelayClient {
   // Callback to get session data for sending to remote
   getSessionsData: (() => RemoteSessionInfo[]) | null = null;
 
+  // Sessions received from other clients via the remote server
+  private remoteSessions: RemoteSessionInfo[] = [];
+
   constructor(manager: SessionManager) {
     this.manager = manager;
+  }
+
+  getRemoteSessions(): RemoteSessionInfo[] {
+    return this.remoteSessions;
   }
 
   connect(config: RelayConfig): void {
@@ -126,6 +133,8 @@ export class RelayClient {
         this.reconnectDelay = 5000;
         this.startHeartbeat();
         this.sendSessions();
+        // Request sessions from other connected clients
+        this.send({ type: "remote_sessions_request" });
         break;
 
       case "auth_fail":
@@ -149,6 +158,11 @@ export class RelayClient {
         if (session && session.status === "running") {
           session.sendMessage(msg.text, msg.images);
         }
+        break;
+
+      case "remote_sessions":
+        // Sessions from other clients connected to the same relay server
+        this.remoteSessions = msg.sessions ?? [];
         break;
     }
   }
@@ -339,6 +353,13 @@ export class RelayServer {
           serverName: server.name,
           serverId: server.id,
         }));
+        // Broadcast updated remote sessions to all connected clients
+        this.broadcastRemoteSessions();
+        break;
+
+      case "remote_sessions_request":
+        // A client wants to see sessions from other connected clients
+        this.sendRemoteSessionsTo(server);
         break;
 
       case "proxy_response":
@@ -347,6 +368,25 @@ export class RelayServer {
           this.onProxyResponse(server.id, msg.sessionId, msg.from, msg.text, msg.msgType);
         }
         break;
+    }
+  }
+
+  // Send each client the sessions from OTHER connected clients (not their own)
+  private broadcastRemoteSessions(): void {
+    for (const [id, server] of this.connectedServers) {
+      this.sendRemoteSessionsTo(server);
+    }
+  }
+
+  private sendRemoteSessionsTo(server: ConnectedServer): void {
+    // Collect sessions from all OTHER connected clients
+    const sessions: RemoteSessionInfo[] = [];
+    for (const [id, other] of this.connectedServers) {
+      if (id === server.id) continue; // don't send a client its own sessions
+      sessions.push(...other.sessions);
+    }
+    if (server.ws.readyState === WebSocket.OPEN) {
+      server.ws.send(JSON.stringify({ type: "remote_sessions", sessions }));
     }
   }
 

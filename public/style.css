@@ -45,6 +45,20 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
   gap: 0.75rem;
 }
 
+.session-group-header {
+  grid-column: 1 / -1;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.75rem 0 0.25rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid #21262d;
+}
+
+.session-card.remote { border-left: 3px solid #58a6ff; }
+
 .session-card {
   background: #161b22;
   border: 1px solid #30363d;

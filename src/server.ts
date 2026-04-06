@@ -860,11 +860,23 @@ app.post("/api/relay/disconnect", (_req, res) => {
 });
 
 app.get("/api/relay/sessions", (_req, res) => {
-  relayServer.requestAllSessions();
-  // Small delay to allow session responses to arrive
-  setTimeout(() => {
-    res.json({ sessions: relayServer.getAllRemoteSessions() });
-  }, 500);
+  // Combine sessions from both sources:
+  // 1. Relay server: sessions from clients connected to this server
+  // 2. Relay client: sessions from other clients connected to the same remote
+  const serverSessions = relayServer.getAllRemoteSessions();
+  const clientSessions = relayClient.getRemoteSessions();
+
+  // Deduplicate by session ID (prefer server-side data)
+  const seen = new Set(serverSessions.map(s => s.id));
+  const combined = [...serverSessions];
+  for (const s of clientSessions) {
+    if (!seen.has(s.id)) {
+      combined.push(s);
+      seen.add(s.id);
+    }
+  }
+
+  res.json({ sessions: combined });
 });
 
 app.post("/api/relay/proxy", (req, res) => {
