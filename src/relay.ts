@@ -48,7 +48,9 @@ export class RelayClient {
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = 5000;
   private connected = false;
+  private connecting = false;
   private intentionalDisconnect = false;
+  private lastError: string | null = null;
 
   // Callback to get session data for sending to remote
   getSessionsData: (() => RemoteSessionInfo[]) | null = null;
@@ -70,11 +72,15 @@ export class RelayClient {
     }
 
     console.log(`Relay client: connecting to ${this.config.url}...`);
+    this.connecting = true;
+    this.lastError = null;
 
     try {
       this.ws = new WebSocket(this.config.url);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Relay client: failed to create WebSocket:", err);
+      this.connecting = false;
+      this.lastError = err.message || "Failed to connect";
       this.scheduleReconnect();
       return;
     }
@@ -94,6 +100,7 @@ export class RelayClient {
     this.ws.on("close", () => {
       console.log("Relay client: disconnected");
       this.connected = false;
+      this.connecting = false;
       this.stopHeartbeat();
       if (!this.intentionalDisconnect) {
         this.scheduleReconnect();
@@ -102,6 +109,8 @@ export class RelayClient {
 
     this.ws.on("error", (err) => {
       console.error("Relay client: error:", err.message);
+      this.lastError = err.message;
+      this.connecting = false;
     });
   }
 
@@ -110,6 +119,8 @@ export class RelayClient {
       case "auth_ok":
         console.log("Relay client: authenticated");
         this.connected = true;
+        this.connecting = false;
+        this.lastError = null;
         this.reconnectDelay = 5000;
         this.startHeartbeat();
         this.sendSessions();
@@ -117,6 +128,8 @@ export class RelayClient {
 
       case "auth_fail":
         console.error("Relay client: auth failed:", msg.reason);
+        this.lastError = `Auth failed: ${msg.reason}`;
+        this.connecting = false;
         this.intentionalDisconnect = true;
         this.ws?.close();
         break;
@@ -166,11 +179,13 @@ export class RelayClient {
     console.log("Relay client: disconnected intentionally");
   }
 
-  getStatus(): { connected: boolean; url: string | null; serverName: string | null } {
+  getStatus(): { connected: boolean; connecting: boolean; url: string | null; serverName: string | null; error: string | null } {
     return {
       connected: this.connected,
+      connecting: this.connecting,
       url: this.config?.url ?? null,
       serverName: this.config?.serverName ?? null,
+      error: this.lastError,
     };
   }
 

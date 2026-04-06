@@ -1579,13 +1579,26 @@
         if (data.client.connected) {
           dot.className = 'relay-dot connected';
           text.textContent = `Connected to ${data.client.url}`;
+          text.style.color = '';
           connectBtn.style.display = 'none';
           disconnectBtn.style.display = '';
           document.getElementById('relay-url').value = data.client.url || '';
           document.getElementById('relay-server-name').value = data.client.serverName || '';
+        } else if (data.client.connecting) {
+          dot.className = 'relay-dot connecting';
+          text.textContent = 'Connecting...';
+          text.style.color = '';
+          connectBtn.style.display = 'none';
+          disconnectBtn.style.display = '';
         } else {
           dot.className = 'relay-dot disconnected';
-          text.textContent = 'Disconnected';
+          if (data.client.error) {
+            text.textContent = `Error: ${data.client.error}`;
+            text.style.color = '#f85149';
+          } else {
+            text.textContent = 'Disconnected';
+            text.style.color = '';
+          }
           connectBtn.style.display = '';
           disconnectBtn.style.display = 'none';
         }
