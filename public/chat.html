@@ -268,6 +268,8 @@
     let currentIsHub = false;
 
     async function joinSession(id, name, status, remoteControl, isHub) {
+      // Update URL so the session is directly linkable
+      history.replaceState(null, '', `#${id}`);
       currentRoom = id;
       currentSessionId = id;
       currentIsHub = isHub || false;
@@ -313,6 +315,7 @@
     }
 
     function showPicker() {
+      history.replaceState(null, '', location.pathname);
       currentRoom = null;
       currentSessionId = null;
       document.getElementById('session-picker').style.display = 'block';
@@ -1366,8 +1369,23 @@
         const data = await res.json();
         if (data.workspaceDir) WORKSPACE_DIR = data.workspaceDir;
       } catch {}
+
+      // Check URL for direct session link (e.g. /chat.html#session-id)
+      const hashId = location.hash.slice(1);
+      if (hashId) {
+        try {
+          const res = await fetch(`${API}/api/sessions/${hashId}`);
+          if (res.ok) {
+            const s = await res.json();
+            joinSession(s.id, s.name, s.status, s.remoteControl, s.isHub);
+            connectWS();
+            return;
+          }
+        } catch {}
+      }
+
+      loadSessions();
     })();
-    loadSessions();
     connectWS();
   </script>
 </body>
