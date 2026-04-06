@@ -327,6 +327,7 @@ app.get("/api/sessions", (_req, res) => {
       `${s.id}.jsonl`
     );
     let messageCount = 0;
+    let lastMessageAt: string | null = null;
     try {
       if (existsSync(jsonlPath)) {
         const data = readFileSync(jsonlPath, "utf-8");
@@ -336,6 +337,7 @@ app.get("/api/sessions", (_req, res) => {
             const msg = JSON.parse(line);
             if (msg.type === "user" || msg.type === "assistant") {
               messageCount++;
+              if (msg.timestamp) lastMessageAt = msg.timestamp;
             }
           } catch {}
         }
@@ -348,6 +350,7 @@ app.get("/api/sessions", (_req, res) => {
       status: s.status,
       createdAt: s.createdAt,
       messageCount,
+      lastMessageAt,
       isHub: s.isHub,
       remoteControl: s.remoteControl,
       channel: s.channel,

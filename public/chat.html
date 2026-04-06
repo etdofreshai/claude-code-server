@@ -196,6 +196,12 @@
     async function loadSessions() {
       const res = await fetch(`${API}/api/sessions`);
       const data = await res.json();
+      // Sort by latest message, most recent first
+      data.sessions.sort((a, b) => {
+        const ta = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+        const tb = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+        return tb - ta;
+      });
       const list = document.getElementById('session-list');
       list.innerHTML = '';
 
@@ -211,6 +217,7 @@
         const hubBadge = s.isHub
           ? '<span class="badge hub">Hub</span>'
           : '';
+        const timeAgo = s.lastMessageAt ? formatTimeAgo(new Date(s.lastMessageAt)) : '';
         div.innerHTML = `
           <button class="session-remove" onclick="removeSession('${s.id}', event)" title="Remove session">&times;</button>
           <div class="session-name">${s.name}</div>
@@ -218,6 +225,7 @@
             <span class="status ${s.status}">${s.status}</span>
             <span>${s.messageCount} msgs</span>
             ${channelBadge}${rcBadge}${hubBadge}
+            ${timeAgo ? `<span>${timeAgo}</span>` : ''}
             <code>${s.id.slice(0, 8)}</code>
           </div>
         `;
@@ -858,6 +866,12 @@
       try {
         const res = await fetch(`${API}/api/sessions`);
         const data = await res.json();
+        // Sort by latest message, most recent first
+        data.sessions.sort((a, b) => {
+          const ta = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+          const tb = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+          return tb - ta;
+        });
         list.innerHTML = '';
         for (const s of data.sessions) {
           const div = document.createElement('div');
@@ -865,12 +879,14 @@
           const statusClass = s.status;
           const hubIcon = s.isHub ? '<span class="sidebar-hub">Hub</span>' : '';
           const rcIcon = s.remoteControl ? '<span class="sidebar-rc">RC</span>' : '';
+          const timeAgo = s.lastMessageAt ? formatTimeAgo(new Date(s.lastMessageAt)) : '';
           div.innerHTML = `
             <div class="sidebar-item-name">${escapeHtml(s.name)}</div>
             <div class="sidebar-item-meta">
               <span class="status ${statusClass}">${s.status}</span>
               ${hubIcon}${rcIcon}
               <span>${s.messageCount} msgs</span>
+              ${timeAgo ? `<span>${timeAgo}</span>` : ''}
             </div>
           `;
           div.onclick = () => {
