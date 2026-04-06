@@ -223,7 +223,17 @@ export class RelayServer {
   }
 
   attachToServer(server: Server): void {
-    this.wss = new WebSocketServer({ server, path: "/relay" });
+    this.wss = new WebSocketServer({ noServer: true });
+
+    // Handle upgrade requests manually to avoid conflicts with other WSS instances
+    server.on("upgrade", (req, socket, head) => {
+      if (req.url === "/relay") {
+        this.wss!.handleUpgrade(req, socket, head, (ws) => {
+          this.wss!.emit("connection", ws, req);
+        });
+      }
+      // Don't destroy the socket for other paths — let the other WSS handle them
+    });
 
     this.wss.on("connection", (ws) => {
       let authenticated = false;
