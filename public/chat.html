@@ -26,9 +26,20 @@
     </div>
 
     <div id="chat-view" class="panel" style="display:none">
+      <!-- Sessions sidebar -->
+      <div id="sidebar" class="sidebar hidden">
+        <div class="sidebar-header">
+          <h3>Sessions</h3>
+          <button onclick="closeSidebar()" class="sidebar-close">&times;</button>
+        </div>
+        <div id="sidebar-list"></div>
+      </div>
+      <div id="sidebar-backdrop" class="hidden" onclick="closeSidebar()"></div>
+
       <div id="chat-header">
         <div id="chat-header-left">
-          <button id="back-btn" onclick="showPicker()">&larr; Back</button>
+          <button id="sidebar-btn" onclick="toggleSidebar()" title="Sessions">&#9776;</button>
+          <button id="back-btn" onclick="showPicker()">&larr;</button>
           <span id="chat-session-name"></span>
           <span id="chat-session-status" class="status"></span>
         </div>
@@ -774,6 +785,58 @@
         btn.textContent = 'Error';
         btn.disabled = false;
         setTimeout(() => { btn.textContent = 'Restore'; btn.style.background = ''; }, 2000);
+      }
+    }
+
+    // --- Tools dropdown ---
+
+    // --- Sidebar ---
+
+    async function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const backdrop = document.getElementById('sidebar-backdrop');
+      if (sidebar.classList.contains('hidden')) {
+        sidebar.classList.remove('hidden');
+        backdrop.classList.remove('hidden');
+        await loadSidebarSessions();
+      } else {
+        closeSidebar();
+      }
+    }
+
+    function closeSidebar() {
+      document.getElementById('sidebar').classList.add('hidden');
+      document.getElementById('sidebar-backdrop').classList.add('hidden');
+    }
+
+    async function loadSidebarSessions() {
+      const list = document.getElementById('sidebar-list');
+      list.innerHTML = '<div class="loading">Loading...</div>';
+      try {
+        const res = await fetch(`${API}/api/sessions`);
+        const data = await res.json();
+        list.innerHTML = '';
+        for (const s of data.sessions) {
+          const div = document.createElement('div');
+          div.className = 'sidebar-item' + (s.id === currentSessionId ? ' active' : '');
+          const statusClass = s.status;
+          const hubIcon = s.isHub ? '<span class="sidebar-hub">Hub</span>' : '';
+          div.innerHTML = `
+            <div class="sidebar-item-name">${escapeHtml(s.name)}</div>
+            <div class="sidebar-item-meta">
+              <span class="status ${statusClass}">${s.status}</span>
+              ${hubIcon}
+              <span>${s.messageCount} msgs</span>
+            </div>
+          `;
+          div.onclick = () => {
+            closeSidebar();
+            joinSession(s.id, s.name, s.status, s.remoteControl, s.isHub);
+          };
+          list.appendChild(div);
+        }
+      } catch (err) {
+        list.innerHTML = '<div class="loading">Failed to load sessions</div>';
       }
     }
 
