@@ -58,6 +58,8 @@
                 <input type="checkbox" id="rc-checkbox" onchange="toggleRemoteControl()" />
                 <span>Remote Control</span>
               </label>
+              <button onclick="copySessionId(); closeToolsMenu()">Copy Session ID</button>
+              <button onclick="copyChatHistory(); closeToolsMenu()">Copy Chat History</button>
               <hr />
               <button class="tools-menu-danger" onclick="removeCurrentSession(); closeToolsMenu()">Remove Session</button>
             </div>
@@ -481,6 +483,32 @@
       }
     }
 
+    function copySessionId() {
+      if (!currentSessionId) return;
+      navigator.clipboard.writeText(currentSessionId);
+    }
+
+    function copyChatHistory() {
+      const msgs = document.querySelectorAll('#messages .message');
+      const lines = [];
+      for (const msg of msgs) {
+        if (msg.classList.contains('tool-summary')) continue;
+        const from = msg.classList.contains('user') ? 'User' : 'Assistant';
+        const textEl = msg.querySelector('.msg-text');
+        const text = textEl ? textEl.textContent : '';
+        if (text) lines.push(`${from}: ${text}`);
+      }
+      navigator.clipboard.writeText(lines.join('\n\n'));
+    }
+
+    function copyToClipboard(text, btn) {
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = '✓';
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+      });
+    }
+
     function appendMessage(from, text, ts, msgType, imageUrls) {
       const div = document.createElement('div');
       const type = msgType || 'text';
@@ -506,7 +534,34 @@
 
       // Show timestamps on user/assistant messages but not tool summaries
       const showTime = timeStr && type !== 'tool';
-      div.innerHTML = `<div class="msg-text">${renderedText}</div>${imageHtml}${showTime ? `<div class="msg-time">${timeStr}</div>` : ''}`;
+      const copyBtn = type !== 'tool' ? '<button class="msg-copy-btn" title="Copy">📋</button>' : '';
+      div.innerHTML = `${copyBtn}<div class="msg-text">${renderedText}</div>${imageHtml}${showTime ? `<div class="msg-time">${timeStr}</div>` : ''}`;
+
+      // Attach copy handler for message
+      const copyEl = div.querySelector('.msg-copy-btn');
+      if (copyEl) {
+        copyEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const msgText = div.querySelector('.msg-text')?.textContent || '';
+          copyToClipboard(msgText, copyEl);
+        });
+      }
+
+      // Add copy buttons to code blocks inside the message
+      div.querySelectorAll('pre').forEach((pre) => {
+        pre.style.position = 'relative';
+        const codeBtn = document.createElement('button');
+        codeBtn.className = 'code-copy-btn';
+        codeBtn.textContent = '📋';
+        codeBtn.title = 'Copy code';
+        codeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const code = pre.querySelector('code')?.textContent || pre.textContent;
+          copyToClipboard(code, codeBtn);
+        });
+        pre.appendChild(codeBtn);
+      });
+
       const container = document.getElementById('messages');
       container.appendChild(div);
       container.scrollTop = container.scrollHeight;

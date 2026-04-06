@@ -414,6 +414,44 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
 
 .msg-text { white-space: pre-wrap; word-break: break-word; }
 
+/* Message copy button */
+.message { position: relative; }
+.msg-copy-btn {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  background: rgba(30, 30, 50, 0.8);
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0.15em 0.3em;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 5;
+  line-height: 1;
+}
+.message:hover .msg-copy-btn { opacity: 1; }
+.msg-copy-btn:hover { background: #30363d; }
+
+/* Code block copy button */
+.code-copy-btn {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  background: rgba(30, 30, 50, 0.8);
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0.15em 0.3em;
+  opacity: 0;
+  transition: opacity 0.15s;
+  line-height: 1;
+}
+pre:hover .code-copy-btn { opacity: 1; }
+.code-copy-btn:hover { background: #30363d; }
+
 /* Markdown rendering for assistant messages */
 .message.assistant .msg-text { white-space: normal; }
 
