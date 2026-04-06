@@ -527,6 +527,7 @@ app.post("/api/sessions/:sessionId/remote-control", async (req, res) => {
   try {
     await (session.query as any).enableRemoteControl(enabled);
     session.remoteControl = enabled;
+    manager.saveState();
     res.json({ remoteControl: enabled });
   } catch (err) {
     res.status(500).json({ error: String(err) });

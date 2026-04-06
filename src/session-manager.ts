@@ -167,7 +167,7 @@ export class SessionManager {
     }
   }
 
-  private saveState(): void {
+  saveState(): void {
     const persisted: PersistedSession[] = this.getAllSessions()
       .filter((s) => s.status !== "ended")
       .map((s) => ({
