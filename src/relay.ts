@@ -56,6 +56,8 @@ export class RelayClient {
   getSessionsData: (() => RemoteSessionInfo[]) | null = null;
   // Callback when remote requests message history for a local session
   onMessagesRequest: ((sessionId: string, requestId: string) => void) | null = null;
+  // Callback when remote requests an action on a local session
+  onActionRequest: ((sessionId: string, action: string, data: any, requestId: string) => void) | null = null;
 
   // Sessions received from other clients via the remote server
   private remoteSessions: RemoteSessionInfo[] = [];
@@ -173,6 +175,13 @@ export class RelayClient {
           this.onMessagesRequest(msg.sessionId, msg.requestId);
         }
         break;
+
+      case "action_request":
+        // Remote wants to perform an action on a local session
+        if (this.onActionRequest) {
+          this.onActionRequest(msg.sessionId, msg.action, msg.data, msg.requestId);
+        }
+        break;
     }
   }
 
@@ -180,6 +189,11 @@ export class RelayClient {
     if (!this.connected || !this.ws) return;
     const sessions = this.getSessionsData?.() ?? [];
     this.send({ type: "sessions_response", sessions });
+  }
+
+  // Send action response back to the relay server
+  sendActionResponse(requestId: string, result: any): void {
+    this.send({ type: "action_response", requestId, result });
   }
 
   // Send message history response back to the relay server
@@ -386,6 +400,15 @@ export class RelayServer {
         }
         break;
 
+      case "action_response":
+        if ((server as any)._pendingActions?.[msg.requestId]) {
+          const { resolve, timeout } = (server as any)._pendingActions[msg.requestId];
+          clearTimeout(timeout);
+          delete (server as any)._pendingActions[msg.requestId];
+          resolve(msg.result ?? {});
+        }
+        break;
+
       case "proxy_response":
         // A remote session sent a message back — forward to web clients
         if (this.onProxyResponse) {
@@ -450,6 +473,27 @@ export class RelayServer {
       (server as any)._pendingMessages[requestId] = { resolve, timeout };
 
       server.ws.send(JSON.stringify({ type: "messages_request", sessionId, requestId }));
+    });
+  }
+
+  // Proxy a generic action to a remote session (e.g. remote-control, end)
+  proxyAction(serverId: string, sessionId: string, action: string, data?: any): Promise<any> {
+    const server = this.connectedServers.get(serverId);
+    if (!server || server.ws.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error("Server not connected"));
+    }
+
+    const requestId = randomUUID();
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        delete (server as any)._pendingActions?.[requestId];
+        reject(new Error("Action request timed out"));
+      }, 15000);
+
+      if (!(server as any)._pendingActions) (server as any)._pendingActions = {};
+      (server as any)._pendingActions[requestId] = { resolve, timeout };
+
+      server.ws.send(JSON.stringify({ type: "action_request", sessionId, action, data, requestId }));
     });
   }
 

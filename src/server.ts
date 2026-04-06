@@ -891,6 +891,20 @@ app.post("/api/relay/messages", async (req, res) => {
   }
 });
 
+app.post("/api/relay/action", async (req, res) => {
+  const { serverId, sessionId, action, data } = req.body ?? {};
+  if (!serverId || !sessionId || !action) {
+    return res.status(400).json({ error: "serverId, sessionId, and action required" });
+  }
+
+  try {
+    const result = await relayServer.proxyAction(serverId, sessionId, action, data);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 app.post("/api/relay/proxy", (req, res) => {
   const { serverId, sessionId, text, images } = req.body ?? {};
   if (!serverId || !sessionId) return res.status(400).json({ error: "serverId and sessionId required" });
@@ -1090,6 +1104,43 @@ relayClient.onMessagesRequest = (sessionId, requestId) => {
     }
   } catch {}
   relayClient.sendMessagesResponse(requestId, messages);
+};
+
+// Handle remote action requests on local sessions (remote control, end, etc.)
+relayClient.onActionRequest = async (sessionId, action, data, requestId) => {
+  const session = manager.getSession(sessionId);
+  if (!session) {
+    relayClient.sendActionResponse(requestId, { error: "Session not found" });
+    return;
+  }
+
+  try {
+    switch (action) {
+      case "remote-control": {
+        if (session.status !== "running") {
+          relayClient.sendActionResponse(requestId, { error: "Session not running" });
+          return;
+        }
+        const enabled = data?.enabled ?? false;
+        await (session.query as any).enableRemoteControl(enabled);
+        session.remoteControl = enabled;
+        manager.saveState();
+        relayClient.sendActionResponse(requestId, { remoteControl: enabled });
+        relayClient.sendSessions(); // update remote with new RC state
+        break;
+      }
+      case "end": {
+        await manager.endSession(sessionId);
+        relayClient.sendActionResponse(requestId, { ended: sessionId });
+        relayClient.sendSessions();
+        break;
+      }
+      default:
+        relayClient.sendActionResponse(requestId, { error: `Unknown action: ${action}` });
+    }
+  } catch (err) {
+    relayClient.sendActionResponse(requestId, { error: String(err) });
+  }
 };
 
 relayServer.onProxyResponse = (serverId, sessionId, from, text, msgType) => {

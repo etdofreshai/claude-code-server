@@ -473,19 +473,31 @@
       const enabled = checkbox.checked;
 
       try {
-        const res = await fetch(`${API}/api/sessions/${currentSessionId}/remote-control`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled }),
-        });
+        let res;
+        if (currentRoom && currentRoom.startsWith('relay:')) {
+          const parts = currentRoom.split(':');
+          const serverId = parts[1];
+          const sessionId = parts[2];
+          res = await fetch(`${API}/api/relay/action`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ serverId, sessionId, action: 'remote-control', data: { enabled } }),
+          });
+        } else {
+          res = await fetch(`${API}/api/sessions/${currentSessionId}/remote-control`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+          });
+        }
         const data = await res.json();
         if (data.error) {
           alert('Failed: ' + data.error);
-          checkbox.checked = !enabled; // revert
+          checkbox.checked = !enabled;
         }
       } catch (err) {
         alert('Failed to toggle remote control');
-        checkbox.checked = !enabled; // revert
+        checkbox.checked = !enabled;
       }
     }
 
