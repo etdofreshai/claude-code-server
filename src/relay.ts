@@ -76,7 +76,9 @@ export class RelayClient {
     this.lastError = null;
 
     try {
-      this.ws = new WebSocket(this.config.url);
+      this.ws = new WebSocket(this.config.url, {
+        rejectUnauthorized: false, // Allow self-signed certs
+      });
     } catch (err: any) {
       console.error("Relay client: failed to create WebSocket:", err);
       this.connecting = false;
