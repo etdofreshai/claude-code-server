@@ -19,7 +19,16 @@ export class WebChannel implements Channel {
    * Attach WebSocket server to an existing HTTP server.
    */
   attachToServer(server: Server): void {
-    this.wss = new WebSocketServer({ server, path: "/ws" });
+    this.wss = new WebSocketServer({ noServer: true });
+
+    // Handle upgrade requests manually to coexist with other WSS instances (e.g. relay)
+    server.on("upgrade", (req, socket, head) => {
+      if (req.url === "/ws") {
+        this.wss!.handleUpgrade(req, socket, head, (ws) => {
+          this.wss!.emit("connection", ws, req);
+        });
+      }
+    });
 
     this.wss.on("connection", (ws) => {
       const client: WebClient = { ws, sessionId: null, room: null };
