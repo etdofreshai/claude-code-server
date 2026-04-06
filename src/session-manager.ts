@@ -382,7 +382,30 @@ export class SessionManager {
 
     // Enable remote control only if requested
     if (remoteControl) {
+      // The SDK needs to be initialized before we can enable remote control.
+      // If no prompt was pushed, we need to push a minimal one to trigger init,
+      // then wait for the init message before calling enableRemoteControl.
+      if (!options?.prompt && !isResuming) {
+        // Push a silent bootstrap to trigger SDK init
+        const bootstrapMsg: SDKUserMessage = {
+          type: "user",
+          message: { role: "user", content: "." },
+          parent_tool_use_id: null,
+          isSynthetic: true,
+          timestamp: new Date().toISOString(),
+        };
+        push(bootstrapMsg);
+      }
+
+      // Wait for the init message (up to 30s)
+      const initPromise = new Promise<void>((resolve, reject) => {
+        if (session.status === "running") return resolve();
+        (session as any)._initResolve = resolve;
+        setTimeout(() => reject(new Error("Init timeout for remote control")), 30000);
+      });
+
       try {
+        await initPromise;
         await (q as any).enableRemoteControl(true);
         console.log(`Session ${session.id}: remote control enabled`);
       } catch (err) {
@@ -406,6 +429,11 @@ export class SessionManager {
             console.log(`Session ${session.id}: SDK assigned different ID ${initId}`);
           }
           session.status = "running";
+          // Resolve init promise if anyone is waiting
+          if ((session as any)._initResolve) {
+            (session as any)._initResolve();
+            (session as any)._initResolve = null;
+          }
         }
 
         if (message.type === "result") {
