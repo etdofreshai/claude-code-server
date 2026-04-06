@@ -879,6 +879,18 @@ app.get("/api/relay/sessions", (_req, res) => {
   res.json({ sessions: combined });
 });
 
+app.post("/api/relay/messages", async (req, res) => {
+  const { serverId, sessionId } = req.body ?? {};
+  if (!serverId || !sessionId) return res.status(400).json({ error: "serverId and sessionId required" });
+
+  try {
+    const messages = await relayServer.proxyMessages(serverId, sessionId);
+    res.json({ messages });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 app.post("/api/relay/proxy", (req, res) => {
   const { serverId, sessionId, text, images } = req.body ?? {};
   if (!serverId || !sessionId) return res.status(400).json({ error: "serverId and sessionId required" });
@@ -1014,6 +1026,70 @@ relayClient.getSessionsData = () => {
     serverName: "",
     serverId: "",
   }));
+};
+
+// Handle remote requests for local session message history
+relayClient.onMessagesRequest = (sessionId, requestId) => {
+  const projectSlug = WORKSPACE_DIR.replace(/[\\/:\\]/g, "-");
+  const jsonlPath = join(
+    process.env.HOME ?? "/home/claude",
+    ".claude/projects",
+    projectSlug,
+    `${sessionId}.jsonl`
+  );
+
+  const messages: any[] = [];
+  try {
+    if (existsSync(jsonlPath)) {
+      const data = readFileSync(jsonlPath, "utf-8");
+      for (const line of data.split("\n")) {
+        if (!line) continue;
+        try {
+          const msg = JSON.parse(line);
+          if (msg.type === "user") {
+            if (msg.isSynthetic) continue;
+            const content = msg.message?.content;
+            const hasToolResult = Array.isArray(content) && content.some((b: any) => b.type === "tool_result");
+            if (hasToolResult) continue;
+
+            let text: string | null;
+            if (typeof content === "string") {
+              text = content;
+            } else if (Array.isArray(content)) {
+              const textBlocks = content.filter((b: any) => b.type === "text").map((b: any) => b.text);
+              text = textBlocks.length > 0 ? textBlocks.join("\n") : null;
+            } else {
+              text = null;
+            }
+            if (text) messages.push({ from: "user", type: "text", text, ts: msg.timestamp ?? null });
+          } else if (msg.type === "assistant") {
+            const content = msg.message?.content;
+            if (!Array.isArray(content)) continue;
+            const textParts = content.filter((b: any) => b.type === "text").map((b: any) => b.text);
+            if (textParts.length > 0) {
+              messages.push({ from: "assistant", type: "text", text: textParts.join("\n"), ts: msg.timestamp ?? null });
+            }
+            const toolUses = content.filter((b: any) => b.type === "tool_use");
+            for (const t of toolUses) {
+              const name = t.name || "Unknown";
+              const input = t.input || {};
+              let detail = "";
+              switch (name) {
+                case "Bash": detail = input.description || `${(input.command || "").slice(0, 80)}`; break;
+                case "Read": case "Edit": case "Write": detail = input.file_path || ""; break;
+                case "Glob": detail = input.pattern || ""; break;
+                case "Grep": detail = `${input.pattern || ""} ${input.path ? "in " + input.path : ""}`.trim(); break;
+                case "Agent": detail = input.description || input.subagent_type || ""; break;
+                default: detail = input.description || input.file_path || "";
+              }
+              messages.push({ from: "assistant", type: "tool", text: detail ? `${name}: ${detail}` : name, ts: null });
+            }
+          }
+        } catch {}
+      }
+    }
+  } catch {}
+  relayClient.sendMessagesResponse(requestId, messages);
 };
 
 relayServer.onProxyResponse = (serverId, sessionId, from, text, msgType) => {

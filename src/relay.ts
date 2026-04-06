@@ -54,6 +54,8 @@ export class RelayClient {
 
   // Callback to get session data for sending to remote
   getSessionsData: (() => RemoteSessionInfo[]) | null = null;
+  // Callback when remote requests message history for a local session
+  onMessagesRequest: ((sessionId: string, requestId: string) => void) | null = null;
 
   // Sessions received from other clients via the remote server
   private remoteSessions: RemoteSessionInfo[] = [];
@@ -164,6 +166,13 @@ export class RelayClient {
         // Sessions from other clients connected to the same relay server
         this.remoteSessions = msg.sessions ?? [];
         break;
+
+      case "messages_request":
+        // Remote wants message history for a local session
+        if (this.onMessagesRequest) {
+          this.onMessagesRequest(msg.sessionId, msg.requestId);
+        }
+        break;
     }
   }
 
@@ -171,6 +180,11 @@ export class RelayClient {
     if (!this.connected || !this.ws) return;
     const sessions = this.getSessionsData?.() ?? [];
     this.send({ type: "sessions_response", sessions });
+  }
+
+  // Send message history response back to the relay server
+  sendMessagesResponse(requestId: string, messages: any[]): void {
+    this.send({ type: "messages_response", requestId, messages });
   }
 
   // Forward assistant message from local session back to relay server
@@ -362,6 +376,16 @@ export class RelayServer {
         this.sendRemoteSessionsTo(server);
         break;
 
+      case "messages_response":
+        // Response to a messages_request — resolve the pending promise
+        if ((server as any)._pendingMessages?.[msg.requestId]) {
+          const { resolve, timeout } = (server as any)._pendingMessages[msg.requestId];
+          clearTimeout(timeout);
+          delete (server as any)._pendingMessages[msg.requestId];
+          resolve(msg.messages ?? []);
+        }
+        break;
+
       case "proxy_response":
         // A remote session sent a message back — forward to web clients
         if (this.onProxyResponse) {
@@ -405,6 +429,28 @@ export class RelayServer {
       sessions.push(...server.sessions);
     }
     return sessions;
+  }
+
+  // Request message history from a remote session — returns a promise
+  proxyMessages(serverId: string, sessionId: string): Promise<any[]> {
+    const server = this.connectedServers.get(serverId);
+    if (!server || server.ws.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error("Server not connected"));
+    }
+
+    const requestId = randomUUID();
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        delete (server as any)._pendingMessages?.[requestId];
+        reject(new Error("Messages request timed out"));
+      }, 15000);
+
+      // Store the pending request
+      if (!(server as any)._pendingMessages) (server as any)._pendingMessages = {};
+      (server as any)._pendingMessages[requestId] = { resolve, timeout };
+
+      server.ws.send(JSON.stringify({ type: "messages_request", sessionId, requestId }));
+    });
   }
 
   proxyMessage(serverId: string, sessionId: string, text: string, images?: any[]): boolean {

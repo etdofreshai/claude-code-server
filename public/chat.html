@@ -406,13 +406,33 @@
       const rcCheckbox = document.getElementById('rc-checkbox');
       rcCheckbox.checked = false;
 
+      // Load message history via relay proxy
       const container = document.getElementById('messages');
-      container.innerHTML = '<div class="loading">Connected to remote session</div>';
-      setTimeout(() => { if (container.querySelector('.loading')) container.innerHTML = ''; }, 2000);
+      container.innerHTML = '<div class="loading">Loading messages...</div>';
+
+      try {
+        const res = await fetch(`${API}/api/relay/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serverId, sessionId }),
+        });
+        const data = await res.json();
+        container.innerHTML = '';
+
+        if (data.messages) {
+          for (const msg of data.messages) {
+            const imageUrls = msg.images?.map(img => `data:${img.mediaType};base64,${img.data}`);
+            appendMessage(msg.from, msg.text, msg.ts, msg.type, imageUrls);
+          }
+        }
+      } catch (err) {
+        container.innerHTML = '';
+        console.error('Failed to load remote messages:', err);
+      }
 
       document.getElementById('chat-input').focus();
 
-      // Join the relay room via WebSocket
+      // Join the relay room via WebSocket for live messages
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'join', room: room, sessionId: sessionId }));
       }
