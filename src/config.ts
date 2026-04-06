@@ -1,4 +1,4 @@
-import { readFileSync, watchFile, existsSync } from "fs";
+import { readFileSync, writeFileSync, watchFile, existsSync } from "fs";
 import { join } from "path";
 
 export interface HeartbeatConfig {
@@ -144,6 +144,15 @@ export class Config {
 
   get(): ServerConfig {
     return this.config;
+  }
+
+  update(patch: Partial<ServerConfig>): void {
+    this.config = this.merge(this.config, patch);
+    try {
+      writeFileSync(this.configFile, JSON.stringify(this.config, null, 2));
+    } catch (err) {
+      console.error("Failed to save config:", err);
+    }
   }
 
   onChange(listener: (config: ServerConfig) => void): void {

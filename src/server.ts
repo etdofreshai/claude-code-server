@@ -850,12 +850,27 @@ app.get("/api/relay/status", (_req, res) => {
 app.post("/api/relay/connect", (req, res) => {
   const { url, token, serverName } = req.body ?? {};
   if (!url) return res.status(400).json({ error: "url is required" });
-  relayClient.connect({ url, token: token || "", serverName: serverName || "Local Server" });
+  const name = serverName || "Local Server";
+  relayClient.connect({ url, token: token || "", serverName: name });
+  // Persist relay config so it auto-connects on reboot
+  config.update({
+    relay: {
+      ...config.get().relay,
+      client: { url, token: token || "", serverName: name, autoConnect: true },
+    },
+  });
   res.json({ status: "connecting" });
 });
 
 app.post("/api/relay/disconnect", (_req, res) => {
   relayClient.disconnect();
+  // Clear auto-connect so it doesn't reconnect on reboot
+  config.update({
+    relay: {
+      ...config.get().relay,
+      client: { url: "", token: "", serverName: "", autoConnect: false },
+    },
+  });
   res.json({ status: "disconnected" });
 });
 
