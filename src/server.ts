@@ -330,7 +330,7 @@ app.post("/api/all-sessions/end", async (_req, res) => {
 app.get("/api/sessions", (_req, res) => {
   const sessions = manager.getAllSessions().map((s) => {
     // Count messages from the JSONL file on disk for an accurate count
-    const projectSlug = WORKSPACE_DIR.replace(/\//g, "-");
+    const projectSlug = WORKSPACE_DIR.replace(/[\\/:\\]/g, "-");
     const jsonlPath = join(
       process.env.HOME ?? "/home/claude",
       ".claude/projects",
@@ -420,7 +420,7 @@ app.get("/api/sessions/:sessionId/messages", (req, res) => {
   // Read from the JSONL file on disk (full conversation history)
   // Claude Code stores sessions at ~/.claude/projects/<slug>/<sessionId>.jsonl
   // where slug is the cwd with / replaced by - (leading slash becomes the first -)
-  const projectSlug = WORKSPACE_DIR.replace(/\//g, "-");
+  const projectSlug = WORKSPACE_DIR.replace(/[\\/:\\]/g, "-");
   const jsonlPath = join(
     process.env.HOME ?? "/home/claude",
     ".claude/projects",
