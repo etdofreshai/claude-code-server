@@ -100,6 +100,7 @@
           <button id="voice-send-btn" onclick="stopAndSendRecording()">Send</button>
         </div>
       </div>
+    </div><!-- /chat-view -->
     <!-- Add workspace modal -->
     <div id="add-modal" style="display:none">
       <div class="restore-backdrop" onclick="closeAddModal()"></div>
@@ -873,22 +874,24 @@
       const menu = document.createElement('div');
       menu.className = 'sidebar-item-dropdown';
 
-      const hubLabel = isHub ? '✓ Hub' : 'Set as Hub';
-      const hubDisabled = isHub ? 'disabled style="opacity:0.5"' : '';
+      function addBtn(label, handler, opts = {}) {
+        const b = document.createElement('button');
+        b.textContent = label;
+        if (opts.danger) b.className = 'tools-menu-danger';
+        if (opts.disabled) { b.disabled = true; b.style.opacity = '0.5'; }
+        b.addEventListener('click', (e) => { e.stopPropagation(); handler(); closeSidebarItemMenus(); });
+        menu.appendChild(b);
+      }
 
-      menu.innerHTML = `
-        <button onclick="event.stopPropagation(); sidebarSendTo('${sessionId}'); closeSidebarItemMenus()">Send to Workspace</button>
-        <button ${hubDisabled} onclick="event.stopPropagation(); sidebarSetHub('${sessionId}'); closeSidebarItemMenus()">
-          ${hubLabel}
-        </button>
-        <button onclick="event.stopPropagation(); sidebarToggleRC('${sessionId}', ${!isRC}); closeSidebarItemMenus()">
-          ${isRC ? 'Disable Remote Control' : 'Enable Remote Control'}
-        </button>
-        <hr />
-        <button class="tools-menu-danger" onclick="event.stopPropagation(); sidebarRemove('${sessionId}', '${sessionName.replace(/'/g, "\\'")}'); closeSidebarItemMenus()">
-          Remove Session
-        </button>
-      `;
+      addBtn('Send to Workspace', () => sidebarSendTo(sessionId));
+      addBtn(isHub ? '✓ Hub' : 'Set as Hub', () => sidebarSetHub(sessionId), { disabled: isHub });
+      addBtn(isRC ? 'Disable Remote Control' : 'Enable Remote Control', () => sidebarToggleRC(sessionId, !isRC));
+
+      const hr = document.createElement('hr');
+      menu.appendChild(hr);
+
+      addBtn('Remove Session', () => sidebarRemove(sessionId, sessionName), { danger: true });
+
       btn.parentElement.appendChild(menu);
     }
 
@@ -958,7 +961,7 @@
             <div class="sidebar-item-top">
               <div class="sidebar-item-name">${escapeHtml(s.name)}</div>
               <div class="sidebar-item-menu-wrapper">
-                <button class="sidebar-item-dots" onclick="event.stopPropagation(); toggleSidebarItemMenu(this, '${s.id}', ${JSON.stringify(s.name).replace(/'/g, "\\'")} , ${!!s.isHub}, ${!!s.remoteControl})">⋯</button>
+                <button class="sidebar-item-dots">⋯</button>
               </div>
             </div>
             <div class="sidebar-item-meta">
@@ -968,6 +971,11 @@
               ${timeAgo ? `<span>${timeAgo}</span>` : ''}
             </div>
           `;
+          // Attach menu handler via JS (avoids HTML escaping issues with session names)
+          div.querySelector('.sidebar-item-dots').addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleSidebarItemMenu(e.currentTarget, s.id, s.name, !!s.isHub, !!s.remoteControl);
+          });
           div.onclick = (e) => {
             if (e.target.closest('.sidebar-item-dots') || e.target.closest('.sidebar-item-dropdown')) return;
             closeSidebar();
