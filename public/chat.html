@@ -860,6 +860,80 @@
       document.getElementById('sidebar-backdrop').classList.add('hidden');
     }
 
+    function closeSidebarItemMenus() {
+      document.querySelectorAll('.sidebar-item-dropdown').forEach(el => el.remove());
+    }
+
+    function toggleSidebarItemMenu(btn, sessionId, sessionName, isHub, isRC) {
+      // Close any existing menus
+      const existing = btn.parentElement.querySelector('.sidebar-item-dropdown');
+      closeSidebarItemMenus();
+      if (existing) return; // was open, now closed
+
+      const menu = document.createElement('div');
+      menu.className = 'sidebar-item-dropdown';
+
+      const hubLabel = isHub ? '✓ Hub' : 'Set as Hub';
+      const hubDisabled = isHub ? 'disabled style="opacity:0.5"' : '';
+
+      menu.innerHTML = `
+        <button onclick="event.stopPropagation(); sidebarSendTo('${sessionId}'); closeSidebarItemMenus()">Send to Workspace</button>
+        <button ${hubDisabled} onclick="event.stopPropagation(); sidebarSetHub('${sessionId}'); closeSidebarItemMenus()">
+          ${hubLabel}
+        </button>
+        <button onclick="event.stopPropagation(); sidebarToggleRC('${sessionId}', ${!isRC}); closeSidebarItemMenus()">
+          ${isRC ? 'Disable Remote Control' : 'Enable Remote Control'}
+        </button>
+        <hr />
+        <button class="tools-menu-danger" onclick="event.stopPropagation(); sidebarRemove('${sessionId}', '${sessionName.replace(/'/g, "\\'")}'); closeSidebarItemMenus()">
+          Remove Session
+        </button>
+      `;
+      btn.parentElement.appendChild(menu);
+    }
+
+    async function sidebarSetHub(sessionId) {
+      try {
+        await fetch(`${API}/api/sessions/${sessionId}/set-hub`, { method: 'POST' });
+      } catch {}
+      loadSidebarSessions();
+    }
+
+    async function sidebarToggleRC(sessionId, enabled) {
+      try {
+        await fetch(`${API}/api/sessions/${sessionId}/remote-control`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled }),
+        });
+      } catch {}
+      loadSidebarSessions();
+    }
+
+    async function sidebarRemove(sessionId, sessionName) {
+      if (!confirm(`Remove session "${sessionName}"?`)) return;
+      try {
+        await fetch(`${API}/api/sessions/${sessionId}/end`, { method: 'POST' });
+      } catch {}
+      loadSidebarSessions();
+    }
+
+    function sidebarSendTo(targetId) {
+      // Open the send-to modal with the target pre-selected
+      openSendToModal();
+      setTimeout(() => {
+        const select = document.getElementById('sendto-target');
+        if (select) select.value = targetId;
+      }, 300);
+    }
+
+    // Close sidebar item menus when clicking elsewhere
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.sidebar-item-menu-wrapper')) {
+        closeSidebarItemMenus();
+      }
+    });
+
     async function loadSidebarSessions() {
       const list = document.getElementById('sidebar-list');
       list.innerHTML = '<div class="loading">Loading...</div>';
@@ -881,7 +955,12 @@
           const rcIcon = s.remoteControl ? '<span class="sidebar-rc">RC</span>' : '';
           const timeAgo = s.lastMessageAt ? formatTimeAgo(new Date(s.lastMessageAt)) : '';
           div.innerHTML = `
-            <div class="sidebar-item-name">${escapeHtml(s.name)}</div>
+            <div class="sidebar-item-top">
+              <div class="sidebar-item-name">${escapeHtml(s.name)}</div>
+              <div class="sidebar-item-menu-wrapper">
+                <button class="sidebar-item-dots" onclick="event.stopPropagation(); toggleSidebarItemMenu(this, '${s.id}', ${JSON.stringify(s.name).replace(/'/g, "\\'")} , ${!!s.isHub}, ${!!s.remoteControl})">⋯</button>
+              </div>
+            </div>
             <div class="sidebar-item-meta">
               <span class="status ${statusClass}">${s.status}</span>
               ${hubIcon}${rcIcon}
@@ -889,7 +968,8 @@
               ${timeAgo ? `<span>${timeAgo}</span>` : ''}
             </div>
           `;
-          div.onclick = () => {
+          div.onclick = (e) => {
+            if (e.target.closest('.sidebar-item-dots') || e.target.closest('.sidebar-item-dropdown')) return;
             closeSidebar();
             joinSession(s.id, s.name, s.status, s.remoteControl, s.isHub);
           };
