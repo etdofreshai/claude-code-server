@@ -30,12 +30,16 @@
       <div id="sidebar" class="sidebar hidden">
         <div class="sidebar-header">
           <h3>Sessions</h3>
-          <button onclick="closeSidebar()" class="sidebar-close">&times;</button>
+          <div class="sidebar-header-actions">
+            <button id="sidebar-pin-btn" onclick="togglePinSidebar()" title="Pin sidebar">📌</button>
+            <button onclick="closeSidebar()" class="sidebar-close">&times;</button>
+          </div>
         </div>
         <div id="sidebar-list"></div>
       </div>
       <div id="sidebar-backdrop" class="hidden" onclick="closeSidebar()"></div>
 
+      <div id="chat-main">
       <div id="chat-header">
         <div id="chat-header-left">
           <button id="sidebar-btn" onclick="toggleSidebar()" title="Sessions">&#9776;</button>
@@ -71,7 +75,7 @@
         <button type="submit" id="send-btn">Send</button>
         <button type="button" id="mic-btn" title="Hold to record">🎙️</button>
       </form>
-    </div>
+      </div><!-- /chat-main -->
       <!-- Voice recording overlay -->
       <div id="voice-overlay" class="hidden">
         <div id="voice-cancel-zone">
@@ -264,6 +268,9 @@
       const statusEl = document.getElementById('chat-session-status');
       statusEl.textContent = status;
       statusEl.className = `status ${status}`;
+
+      // Apply pinned sidebar state
+      applySidebarPinState();
 
       // Set remote control checkbox
       const rcCheckbox = document.getElementById('rc-checkbox');
@@ -792,7 +799,42 @@
 
     // --- Sidebar ---
 
+    let sidebarPinned = localStorage.getItem('sidebarPinned') === 'true';
+
+    // Apply pinned state on load
+    function applySidebarPinState() {
+      const chatView = document.getElementById('chat-view');
+      const sidebar = document.getElementById('sidebar');
+      const pinBtn = document.getElementById('sidebar-pin-btn');
+      const closeBtn = sidebar.querySelector('.sidebar-close');
+
+      if (sidebarPinned) {
+        chatView.classList.add('sidebar-pinned');
+        sidebar.classList.remove('hidden');
+        pinBtn.title = 'Unpin sidebar';
+        pinBtn.style.opacity = '1';
+        closeBtn.style.display = 'none';
+        document.getElementById('sidebar-backdrop').classList.add('hidden');
+        loadSidebarSessions();
+      } else {
+        chatView.classList.remove('sidebar-pinned');
+        pinBtn.title = 'Pin sidebar';
+        pinBtn.style.opacity = '0.5';
+        closeBtn.style.display = '';
+      }
+    }
+
+    function togglePinSidebar() {
+      sidebarPinned = !sidebarPinned;
+      localStorage.setItem('sidebarPinned', sidebarPinned);
+      applySidebarPinState();
+      if (!sidebarPinned) {
+        closeSidebar();
+      }
+    }
+
     async function toggleSidebar() {
+      if (sidebarPinned) return; // pinned sidebar is always open
       const sidebar = document.getElementById('sidebar');
       const backdrop = document.getElementById('sidebar-backdrop');
       if (sidebar.classList.contains('hidden')) {
@@ -805,6 +847,7 @@
     }
 
     function closeSidebar() {
+      if (sidebarPinned) return; // don't close pinned sidebar
       document.getElementById('sidebar').classList.add('hidden');
       document.getElementById('sidebar-backdrop').classList.add('hidden');
     }
