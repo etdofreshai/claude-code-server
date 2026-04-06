@@ -12,6 +12,7 @@
     <nav>
       <a href="/">Dashboard</a>
       <a href="/chat.html" class="active">Chat</a>
+      <button id="settings-btn" onclick="openSettingsModal()" title="Settings">⚙️</button>
     </nav>
 
     <div id="session-picker" class="panel">
@@ -181,6 +182,39 @@
       </div>
     </div>
 
+    <!-- Settings modal -->
+    <div id="settings-modal" style="display:none">
+      <div class="restore-backdrop" onclick="closeSettingsModal()"></div>
+      <div class="restore-content" style="max-width:480px">
+        <div class="restore-header">
+          <h3>Settings</h3>
+          <button onclick="closeSettingsModal()" class="restore-close">&times;</button>
+        </div>
+        <div id="settings-body">
+          <h4 class="settings-section-title">Relay Connection</h4>
+          <div id="relay-status-line">
+            <span id="relay-status-dot" class="relay-dot disconnected"></span>
+            <span id="relay-status-text">Disconnected</span>
+          </div>
+          <label class="add-label">Remote Server URL</label>
+          <input type="text" id="relay-url" class="add-input" placeholder="wss://your-remote-server.com/relay" autocomplete="off" />
+          <label class="add-label">Token</label>
+          <input type="text" id="relay-token" class="add-input" placeholder="Authentication token" autocomplete="off" />
+          <label class="add-label">Server Name</label>
+          <input type="text" id="relay-server-name" class="add-input" placeholder="My Local Server" autocomplete="off" />
+          <div class="add-actions" style="margin-top:1rem">
+            <button onclick="relayDisconnect()" id="relay-disconnect-btn" class="add-cancel-btn" style="display:none">Disconnect</button>
+            <button onclick="relayConnect()" id="relay-connect-btn" class="restore-action-btn">Connect</button>
+          </div>
+
+          <h4 class="settings-section-title" style="margin-top:1.5rem">Connected Clients</h4>
+          <div id="relay-connected-list">
+            <p style="color:#8b949e;font-size:0.85rem">No relay clients connected</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
   <!-- Image preview modal -->
   <div id="image-modal" style="display:none" onclick="closeImagePreview()">
     <img id="image-modal-img" src="" alt="Preview" onclick="event.stopPropagation()" />
@@ -311,6 +345,36 @@
       // Join the room via WebSocket
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'join', room: id, sessionId: id }));
+      }
+    }
+
+    async function joinRemoteSession(serverId, sessionId, name, status) {
+      const room = `relay:${serverId}:${sessionId}`;
+      currentRoom = room;
+      currentSessionId = sessionId;
+      currentIsHub = false;
+      history.replaceState(null, '', `#relay:${serverId}:${sessionId}`);
+      document.getElementById('session-picker').style.display = 'none';
+      document.getElementById('chat-view').style.display = 'flex';
+      document.getElementById('chat-session-name').textContent = name + ' (Remote)';
+      const statusEl = document.getElementById('chat-session-status');
+      statusEl.textContent = status;
+      statusEl.className = `status ${status}`;
+
+      applySidebarPinState();
+
+      const rcCheckbox = document.getElementById('rc-checkbox');
+      rcCheckbox.checked = false;
+
+      const container = document.getElementById('messages');
+      container.innerHTML = '<div class="loading">Connected to remote session</div>';
+      setTimeout(() => { if (container.querySelector('.loading')) container.innerHTML = ''; }, 2000);
+
+      document.getElementById('chat-input').focus();
+
+      // Join the relay room via WebSocket
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'join', room: room, sessionId: sessionId }));
       }
     }
 
@@ -573,8 +637,17 @@
         ? pendingImages.map(img => ({ mediaType: img.mediaType, data: img.data }))
         : undefined;
 
-      // Send via WebSocket
-      if (ws && ws.readyState === WebSocket.OPEN) {
+      // Send via WebSocket for local sessions, or proxy for remote sessions
+      if (currentRoom && currentRoom.startsWith('relay:')) {
+        const parts = currentRoom.split(':');
+        const serverId = parts[1];
+        const sessionId = parts[2];
+        fetch(`${API}/api/relay/proxy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serverId, sessionId, text: text || '', images }),
+        });
+      } else if (ws && ws.readyState === WebSocket.OPEN && currentRoom) {
         ws.send(JSON.stringify({ type: 'msg', text: text || '', images }));
       }
 
@@ -986,6 +1059,47 @@
           };
           list.appendChild(div);
         }
+
+        // Load remote sessions from relay
+        try {
+          const relayRes = await fetch(`${API}/api/relay/sessions`);
+          const relayData = await relayRes.json();
+          if (relayData.sessions && relayData.sessions.length > 0) {
+            // Group by server name
+            const grouped = {};
+            for (const s of relayData.sessions) {
+              const key = s.serverName || 'Remote';
+              if (!grouped[key]) grouped[key] = [];
+              grouped[key].push(s);
+            }
+            for (const [serverName, sessions] of Object.entries(grouped)) {
+              const header = document.createElement('div');
+              header.className = 'sidebar-group-header';
+              header.textContent = serverName;
+              list.appendChild(header);
+
+              for (const s of sessions) {
+                const div = document.createElement('div');
+                div.className = 'sidebar-item remote';
+                const hubIcon = s.isHub ? '<span class="sidebar-hub">Hub</span>' : '';
+                const rcIcon = s.remoteControl ? '<span class="sidebar-rc">RC</span>' : '';
+                div.innerHTML = `
+                  <div class="sidebar-item-name">${escapeHtml(s.name)}</div>
+                  <div class="sidebar-item-meta">
+                    <span class="status ${s.status}">${s.status}</span>
+                    ${hubIcon}${rcIcon}
+                    <span>${s.messageCount || 0} msgs</span>
+                  </div>
+                `;
+                div.onclick = () => {
+                  closeSidebar();
+                  joinRemoteSession(s.serverId, s.id, s.name, s.status);
+                };
+                list.appendChild(div);
+              }
+            }
+          }
+        } catch {}
       } catch (err) {
         list.innerHTML = '<div class="loading">Failed to load sessions</div>';
       }
@@ -1361,6 +1475,104 @@
 
     // Prevent context menu on long press (mobile)
     micBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // --- Settings Modal ---
+
+    let settingsPolling = null;
+
+    async function openSettingsModal() {
+      document.getElementById('settings-modal').style.display = 'flex';
+      await refreshRelayStatus();
+      // Poll status while modal is open
+      settingsPolling = setInterval(refreshRelayStatus, 3000);
+    }
+
+    function closeSettingsModal() {
+      document.getElementById('settings-modal').style.display = 'none';
+      if (settingsPolling) { clearInterval(settingsPolling); settingsPolling = null; }
+    }
+
+    async function refreshRelayStatus() {
+      try {
+        const res = await fetch(`${API}/api/relay/status`);
+        const data = await res.json();
+
+        // Update client status
+        const dot = document.getElementById('relay-status-dot');
+        const text = document.getElementById('relay-status-text');
+        const connectBtn = document.getElementById('relay-connect-btn');
+        const disconnectBtn = document.getElementById('relay-disconnect-btn');
+
+        if (data.client.connected) {
+          dot.className = 'relay-dot connected';
+          text.textContent = `Connected to ${data.client.url}`;
+          connectBtn.style.display = 'none';
+          disconnectBtn.style.display = '';
+          document.getElementById('relay-url').value = data.client.url || '';
+          document.getElementById('relay-server-name').value = data.client.serverName || '';
+        } else {
+          dot.className = 'relay-dot disconnected';
+          text.textContent = 'Disconnected';
+          connectBtn.style.display = '';
+          disconnectBtn.style.display = 'none';
+        }
+
+        // Update connected servers list
+        const list = document.getElementById('relay-connected-list');
+        if (data.server.connectedServers.length === 0) {
+          list.innerHTML = '<p style="color:#8b949e;font-size:0.85rem">No relay clients connected</p>';
+        } else {
+          list.innerHTML = '';
+          for (const s of data.server.connectedServers) {
+            const div = document.createElement('div');
+            div.className = 'relay-server-item';
+            div.innerHTML = `
+              <span class="relay-dot connected"></span>
+              <span>${escapeHtml(s.name)}</span>
+              <span style="color:#8b949e;font-size:0.8rem">${s.sessionCount} sessions</span>
+            `;
+            list.appendChild(div);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to get relay status:', err);
+      }
+    }
+
+    async function relayConnect() {
+      const url = document.getElementById('relay-url').value.trim();
+      const token = document.getElementById('relay-token').value.trim();
+      const serverName = document.getElementById('relay-server-name').value.trim();
+      if (!url) { document.getElementById('relay-url').focus(); return; }
+
+      const btn = document.getElementById('relay-connect-btn');
+      btn.disabled = true;
+      btn.textContent = 'Connecting...';
+
+      try {
+        await fetch(`${API}/api/relay/connect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, token, serverName: serverName || 'Local Server' }),
+        });
+        // Wait a moment then refresh status
+        setTimeout(async () => {
+          await refreshRelayStatus();
+          btn.disabled = false;
+          btn.textContent = 'Connect';
+        }, 2000);
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Connect';
+      }
+    }
+
+    async function relayDisconnect() {
+      try {
+        await fetch(`${API}/api/relay/disconnect`, { method: 'POST' });
+        await refreshRelayStatus();
+      } catch {}
+    }
 
     // Init
     (async () => {

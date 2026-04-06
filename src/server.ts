@@ -13,6 +13,7 @@ import { ChannelManager } from "./channels/manager.js";
 import { WebChannel } from "./channels/web.js";
 import { TelegramChannel } from "./channels/telegram.js";
 import { DiscordChannel } from "./channels/discord.js";
+import { RelayClient, RelayServer } from "./relay.js";
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
 const WORKSPACE_DIR = process.env.WORKSPACE_DIR ?? "/home/claude/workspace";
@@ -43,6 +44,16 @@ if (telegramConfig?.token) {
 const discordConfig = config.get().channels.discord;
 if (discordConfig?.token) {
   channelManager.registerChannel(new DiscordChannel(discordConfig));
+}
+
+// Relay system
+const relayClient = new RelayClient(manager);
+const relayServer = new RelayServer();
+
+// Configure relay server tokens
+const relayConfig = config.get().relay;
+if (relayConfig?.server?.allowedTokens) {
+  relayServer.setAllowedTokens(relayConfig.server.allowedTokens);
 }
 
 // Config hot-reload
@@ -825,6 +836,44 @@ app.post("/api/sessions/:sessionId/send-to", async (req, res) => {
   res.json({ sent: true, targetSessionId });
 });
 
+// --- Relay ---
+
+app.get("/api/relay/status", (_req, res) => {
+  res.json({
+    client: relayClient.getStatus(),
+    server: {
+      connectedServers: relayServer.getConnectedServers(),
+    },
+  });
+});
+
+app.post("/api/relay/connect", (req, res) => {
+  const { url, token, serverName } = req.body ?? {};
+  if (!url) return res.status(400).json({ error: "url is required" });
+  relayClient.connect({ url, token: token || "", serverName: serverName || "Local Server" });
+  res.json({ status: "connecting" });
+});
+
+app.post("/api/relay/disconnect", (_req, res) => {
+  relayClient.disconnect();
+  res.json({ status: "disconnected" });
+});
+
+app.get("/api/relay/sessions", (_req, res) => {
+  relayServer.requestAllSessions();
+  // Small delay to allow session responses to arrive
+  setTimeout(() => {
+    res.json({ sessions: relayServer.getAllRemoteSessions() });
+  }, 500);
+});
+
+app.post("/api/relay/proxy", (req, res) => {
+  const { serverId, sessionId, text, images } = req.body ?? {};
+  if (!serverId || !sessionId) return res.status(400).json({ error: "serverId and sessionId required" });
+  const sent = relayServer.proxyMessage(serverId, sessionId, text || "", images);
+  res.json({ sent });
+});
+
 // --- Disk Sessions (for restore) ---
 
 app.get("/api/disk-sessions", async (_req, res) => {
@@ -917,12 +966,14 @@ const httpServer = createServer(app);
 
 // Attach WebSocket to the HTTP server
 webChannel.attachToServer(httpServer);
+relayServer.attachToServer(httpServer);
 
 // Route assistant messages to web channel (session ID = room name)
 manager.onAssistantMessage = (sessionId, text) => {
   webChannel.send(sessionId, text);
   // Also route to bound channels (telegram, discord, etc.)
   channelManager.sendToChannel(sessionId, text);
+  relayClient.forwardMessage(sessionId, text);
 };
 
 // Route tool use notifications to web channel
@@ -934,6 +985,34 @@ manager.onToolUse = (sessionId, tools) => {
     room: sessionId,
     ts: new Date().toISOString(),
     msgType: "tool",
+  });
+  relayClient.forwardMessage(sessionId, tools, "tool");
+};
+
+// Provide session data to relay client for forwarding to remote server
+relayClient.getSessionsData = () => {
+  return manager.getAllSessions().map((s) => ({
+    id: s.id,
+    name: s.name,
+    status: s.status,
+    messageCount: s.messages.length,
+    lastMessageAt: null,
+    isHub: s.isHub,
+    remoteControl: s.remoteControl,
+    serverName: "",
+    serverId: "",
+  }));
+};
+
+relayServer.onProxyResponse = (serverId, sessionId, from, text, msgType) => {
+  const room = `relay:${serverId}:${sessionId}`;
+  webChannel.broadcastToRoom(room, {
+    type: "msg",
+    from,
+    text,
+    room,
+    ts: new Date().toISOString(),
+    msgType,
   });
 };
 
@@ -965,6 +1044,16 @@ httpServer.listen(PORT, async () => {
     }
   } catch (err) {
     console.error("Failed to initialize sessions:", err);
+  }
+
+  // Auto-connect relay client if configured
+  const relayClientConfig = config.get().relay?.client;
+  if (relayClientConfig?.autoConnect && relayClientConfig.url) {
+    relayClient.connect({
+      url: relayClientConfig.url,
+      token: relayClientConfig.token,
+      serverName: relayClientConfig.serverName || "Local Server",
+    });
   }
 
   // Start heartbeat — sends to hub session
@@ -1003,6 +1092,8 @@ httpServer.listen(PORT, async () => {
     heartbeat.stop();
     jobManager.stop();
     await channelManager.stopAll();
+    relayClient.disconnect();
+    relayServer.stop();
     manager.shutdown();
     httpServer.close();
     // Give child processes time to exit cleanly

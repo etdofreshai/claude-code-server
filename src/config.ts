@@ -39,11 +39,25 @@ export interface SessionsConfig {
   defaultRemoteControl: boolean;
 }
 
+export interface RelayConfig {
+  server: {
+    enabled: boolean;
+    allowedTokens: string[];
+  };
+  client: {
+    url: string;
+    token: string;
+    serverName: string;
+    autoConnect: boolean;
+  };
+}
+
 export interface ServerConfig {
   heartbeat: HeartbeatConfig;
   jobs: JobsConfig;
   channels: ChannelsConfig;
   sessions: SessionsConfig;
+  relay: RelayConfig;
 }
 
 const DEFAULT_CONFIG: ServerConfig = {
@@ -63,6 +77,18 @@ const DEFAULT_CONFIG: ServerConfig = {
   sessions: {
     hubRemoteControl: false,
     defaultRemoteControl: false,
+  },
+  relay: {
+    server: {
+      enabled: true,
+      allowedTokens: [],
+    },
+    client: {
+      url: "",
+      token: "",
+      serverName: "",
+      autoConnect: false,
+    },
   },
 };
 
