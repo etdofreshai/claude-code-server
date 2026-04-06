@@ -864,11 +864,12 @@
           div.className = 'sidebar-item' + (s.id === currentSessionId ? ' active' : '');
           const statusClass = s.status;
           const hubIcon = s.isHub ? '<span class="sidebar-hub">Hub</span>' : '';
+          const rcIcon = s.remoteControl ? '<span class="sidebar-rc">RC</span>' : '';
           div.innerHTML = `
             <div class="sidebar-item-name">${escapeHtml(s.name)}</div>
             <div class="sidebar-item-meta">
               <span class="status ${statusClass}">${s.status}</span>
-              ${hubIcon}
+              ${hubIcon}${rcIcon}
               <span>${s.messageCount} msgs</span>
             </div>
           `;

@@ -236,6 +236,13 @@ nav a.active { color: #58a6ff; background: #1a3a5c; }
   border-radius: 6px;
   font-size: 0.7rem;
 }
+.sidebar-rc {
+  background: #2a1f00;
+  color: #d29922;
+  padding: 0.1em 0.4em;
+  border-radius: 6px;
+  font-size: 0.7rem;
+}
 
 /* Tools dropdown */
 .tools-dropdown { position: relative; }
