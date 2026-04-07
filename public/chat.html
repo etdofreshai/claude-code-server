@@ -72,7 +72,9 @@
       </div>
       <form id="chat-form">
         <button type="button" id="attach-img-btn" onclick="document.getElementById('image-file-input').click()" title="Attach image">🖼️</button>
+        <button type="button" id="attach-file-btn" onclick="document.getElementById('file-upload-input').click()" title="Attach file">📄</button>
         <input type="file" id="image-file-input" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden />
+        <input type="file" id="file-upload-input" hidden />
         <input type="text" id="chat-input" placeholder="Type a message or paste an image..." autocomplete="off" />
         <button type="button" id="interrupt-btn" onclick="interruptSession()" style="display:none">Stop</button>
         <button type="submit" id="send-btn">Send</button>
@@ -750,17 +752,70 @@
       if (files.length > 0) addImageFiles(files);
     });
 
+    // --- File attachments ---
+
+    let pendingFile = null; // { name, mediaType, dataUrl, blob }
+
+    document.getElementById('file-upload-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      pendingFile = { name: file.name, mediaType: file.type || 'application/octet-stream', blob: file };
+      renderFilePreview();
+      e.target.value = '';
+    });
+
+    function renderFilePreview() {
+      const container = document.getElementById('image-preview');
+      const list = document.getElementById('image-preview-list');
+      if (!pendingFile && pendingImages.length === 0) {
+        container.style.display = 'none';
+        list.innerHTML = '';
+        return;
+      }
+      container.style.display = 'block';
+      // Re-render images first (call existing render)
+      renderImagePreviews();
+      // Add file chip if present
+      if (pendingFile) {
+        const chip = document.createElement('div');
+        chip.className = 'file-preview-chip';
+        chip.innerHTML = `📄 ${escapeHtml(pendingFile.name)} <button onclick="clearPendingFile()" class="image-thumb-remove" style="position:static;width:auto;height:auto;font-size:0.8rem">&times;</button>`;
+        list.appendChild(chip);
+      }
+    }
+
+    function clearPendingFile() {
+      pendingFile = null;
+      renderFilePreview();
+    }
+
     document.getElementById('chat-form').onsubmit = (e) => {
       e.preventDefault();
       const input = document.getElementById('chat-input');
       const text = input.value.trim();
-      if (!text && pendingImages.length === 0) return;
+      if (!text && pendingImages.length === 0 && !pendingFile) return;
       if (!currentRoom) return;
 
       // Build image payload
       const images = pendingImages.length > 0
         ? pendingImages.map(img => ({ mediaType: img.mediaType, data: img.data }))
         : undefined;
+
+      // Handle file upload if present
+      if (pendingFile && !currentRoom?.startsWith('relay:')) {
+        const blob = pendingFile.blob;
+        fetch(`${API}/api/upload`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': pendingFile.mediaType,
+            'X-File-Name': pendingFile.name,
+            'X-Session-Id': currentSessionId,
+          },
+          body: blob,
+        });
+        appendMessage('user', `📄 ${pendingFile.name}`, new Date().toISOString());
+        clearPendingFile();
+      }
 
       // Send via WebSocket for local sessions, or proxy for remote sessions
       if (currentRoom && currentRoom.startsWith('relay:')) {
@@ -781,6 +836,8 @@
       input.value = '';
       updateSendMicVisibility();
       clearImages();
+      clearPendingFile();
+      updateSendMicVisibility();
       showInterrupt(true);
     };
 
@@ -1437,7 +1494,7 @@
 
     // Toggle mic/send button visibility based on input content
     function updateSendMicVisibility() {
-      const hasContent = chatInput.value.trim() || pendingImages.length > 0;
+      const hasContent = chatInput.value.trim() || pendingImages.length > 0 || pendingFile;
       sendBtn.style.display = hasContent ? 'inline-block' : 'none';
       micBtn.style.display = hasContent ? 'none' : 'inline-block';
     }

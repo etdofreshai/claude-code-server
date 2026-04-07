@@ -28,10 +28,10 @@ export interface SessionInfo {
   isHub: boolean;
   remoteControl: boolean;
   channel?: ChannelBinding;
-  sendMessage: (text: string, images?: ImageAttachment[]) => void;
+  sendMessage: (text: string, images?: ImageAttachment[], files?: FileAttachment[]) => void;
 }
 
-export type { ImageAttachment };
+export type { ImageAttachment, FileAttachment };
 
 /**
  * Creates an async iterable that stays open until explicitly closed.
@@ -99,24 +99,53 @@ interface ImageAttachment {
   data: string; // base64-encoded
 }
 
-function makeUserMessage(text: string, images?: ImageAttachment[]): SDKUserMessage {
+interface FileAttachment {
+  name: string;
+  mediaType: string;
+  data: string; // base64-encoded
+  savedPath?: string; // path where file was saved on disk (for non-PDF)
+}
+
+function makeUserMessage(text: string, images?: ImageAttachment[], files?: FileAttachment[]): SDKUserMessage {
   let content: any;
 
-  if (images && images.length > 0) {
-    // Build content block array with text + images
+  if ((images && images.length > 0) || (files && files.length > 0)) {
+    // Build content block array with text + images + files
     const blocks: any[] = [];
     if (text) {
       blocks.push({ type: "text", text });
     }
-    for (const img of images) {
-      blocks.push({
-        type: "image",
-        source: {
-          type: "base64",
-          media_type: img.mediaType,
-          data: img.data,
-        },
-      });
+    if (images) {
+      for (const img of images) {
+        blocks.push({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: img.mediaType,
+            data: img.data,
+          },
+        });
+      }
+    }
+    // Add file blocks
+    if (files) {
+      for (const file of files) {
+        if (file.mediaType === 'application/pdf') {
+          // PDFs are natively supported as document blocks
+          blocks.push({
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: "application/pdf",
+              data: file.data,
+            },
+            title: file.name,
+          });
+        } else if (file.savedPath) {
+          // Other files were saved to disk — tell Claude where to find them
+          blocks.push({ type: "text", text: `[File uploaded: ${file.name} → saved at ${file.savedPath}]` });
+        }
+      }
     }
     content = blocks;
   } else {
@@ -355,7 +384,7 @@ export class SessionManager {
       isHub,
       remoteControl,
       channel: options?.channel,
-      sendMessage: (text: string, images?: ImageAttachment[]) => push(makeUserMessage(text, images)),
+      sendMessage: (text: string, images?: ImageAttachment[], files?: FileAttachment[]) => push(makeUserMessage(text, images, files)),
     };
 
     // Store close fn and abort controller for cleanup/interrupt

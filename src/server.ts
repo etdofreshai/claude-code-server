@@ -4,7 +4,7 @@ import { join } from "path";
 import { getSessionMessages, query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import { tmpdir } from "os";
 import { mkdtempSync } from "fs";
-import { readFileSync, existsSync, readdirSync, statSync } from "fs";
+import { readFileSync, existsSync, readdirSync, statSync, mkdirSync, writeFileSync } from "fs";
 import { SessionManager } from "./session-manager.js";
 import { Config } from "./config.js";
 import { Heartbeat } from "./heartbeat.js";
@@ -689,6 +689,46 @@ app.post("/api/transcribe", express.raw({ type: "*/*", limit: "25mb" }), async (
   } catch (err) {
     console.error("Transcription error:", err);
     res.status(500).json({ error: String(err) });
+  }
+});
+
+// --- File Upload ---
+
+app.post("/api/upload", express.raw({ type: "*/*", limit: "50mb" }), async (req, res) => {
+  const fileName = req.headers["x-file-name"] as string || "upload";
+  const mediaType = req.headers["content-type"] || "application/octet-stream";
+  const sessionId = req.headers["x-session-id"] as string;
+
+  if (!sessionId) return res.status(400).json({ error: "x-session-id header required" });
+
+  const session = manager.getSession(sessionId);
+  if (!session) return res.status(404).json({ error: "Session not found" });
+
+  const fileData = Buffer.from(req.body).toString("base64");
+
+  if (mediaType === "application/pdf") {
+    // Send PDF directly as a document block
+    session.sendMessage(`[Attached file: ${fileName}]`, undefined, [{
+      name: fileName,
+      mediaType,
+      data: fileData,
+    }]);
+    res.json({ sent: true, method: "document_block" });
+  } else {
+    // Save other files to workspace/uploads/ and tell Claude the path
+    const uploadsDir = join(WORKSPACE_DIR, "uploads");
+    mkdirSync(uploadsDir, { recursive: true });
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const filePath = join(uploadsDir, `${Date.now()}-${safeName}`);
+    writeFileSync(filePath, req.body);
+
+    session.sendMessage(`[Attached file: ${fileName}]`, undefined, [{
+      name: fileName,
+      mediaType,
+      data: fileData,
+      savedPath: filePath,
+    }]);
+    res.json({ sent: true, method: "saved_to_disk", path: filePath });
   }
 });
 

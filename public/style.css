@@ -1201,3 +1201,26 @@ h2 { font-size: 1.1rem; margin-bottom: 0.75rem; }
 .sidebar-item.remote {
   border-left: 2px solid #58a6ff;
 }
+
+#attach-file-btn {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.3rem 0.4rem;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+#attach-file-btn:hover { background: #21262d; }
+
+.file-preview-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 0.3em 0.6em;
+  font-size: 0.85rem;
+  color: #e6edf3;
+}
