@@ -24,6 +24,20 @@ export class WebChannel implements Channel {
     // Handle upgrade requests manually to coexist with other WSS instances (e.g. relay)
     server.on("upgrade", (req, socket, head) => {
       if (req.url === "/ws") {
+        // Check password auth if enabled
+        const sitePassword = process.env.SITE_PASSWORD || "";
+        if (sitePassword) {
+          const cookies = req.headers.cookie?.split(";").reduce((acc: Record<string, string>, c) => {
+            const [k, v] = c.trim().split("=");
+            if (k && v) acc[k] = v;
+            return acc;
+          }, {}) ?? {};
+          if (cookies.ccs_auth !== sitePassword) {
+            socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+            socket.destroy();
+            return;
+          }
+        }
         this.wss!.handleUpgrade(req, socket, head, (ws) => {
           this.wss!.emit("connection", ws, req);
         });

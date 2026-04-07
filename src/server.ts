@@ -65,6 +65,85 @@ config.onChange((newConfig) => {
 // --- Express App ---
 
 const app = express();
+
+// --- Password Protection ---
+
+const SITE_PASSWORD = process.env.SITE_PASSWORD || "";
+
+if (SITE_PASSWORD) {
+  // Login endpoint
+  app.post("/api/login", express.json(), (req, res) => {
+    if (req.body?.password === SITE_PASSWORD) {
+      res.cookie("ccs_auth", SITE_PASSWORD, {
+        httpOnly: true,
+        sameSite: "strict",
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      });
+      res.json({ ok: true });
+    } else {
+      res.status(401).json({ error: "Invalid password" });
+    }
+  });
+
+  // Auth middleware — skip for login endpoint and relay WebSocket
+  app.use((req, res, next) => {
+    // Allow login page assets and the login API
+    if (req.path === "/api/login") return next();
+    // Allow relay WebSocket connections (they have their own auth)
+    if (req.path === "/relay") return next();
+
+    // Check cookie
+    const cookies = req.headers.cookie?.split(";").reduce((acc: Record<string, string>, c) => {
+      const [k, v] = c.trim().split("=");
+      if (k && v) acc[k] = v;
+      return acc;
+    }, {}) ?? {};
+
+    if (cookies.ccs_auth === SITE_PASSWORD) {
+      return next();
+    }
+
+    // Serve login page for HTML requests, 401 for API
+    if (req.path.startsWith("/api/")) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // Serve inline login page
+    res.type("html").send(`<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Login — Claude Code Server</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0d1117;color:#e6edf3;height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:2rem;max-width:360px;width:90%}
+h2{margin-bottom:1rem;font-size:1.2rem}
+input{width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:0.6em 0.8em;color:#e6edf3;font-size:1rem;margin-bottom:0.75rem;outline:none}
+input:focus{border-color:#58a6ff}
+button{width:100%;background:#238636;color:#fff;border:none;border-radius:6px;padding:0.6em;font-size:1rem;cursor:pointer}
+button:hover{background:#2ea043}
+.error{color:#f85149;font-size:0.85rem;margin-bottom:0.5rem;display:none}
+</style></head><body>
+<div class="card">
+<h2>Claude Code Server</h2>
+<p id="err" class="error"></p>
+<form onsubmit="login(event)">
+<input type="password" id="pw" placeholder="Password" autofocus />
+<button type="submit">Login</button>
+</form></div>
+<script>
+async function login(e){
+e.preventDefault();
+const pw=document.getElementById('pw').value;
+const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+if(r.ok){location.reload()}else{const err=document.getElementById('err');err.textContent='Invalid password';err.style.display='block'}
+}
+</script></body></html>`);
+  });
+
+  console.log("Password protection enabled");
+}
+
 app.use(express.json());
 
 // Serve static frontend
